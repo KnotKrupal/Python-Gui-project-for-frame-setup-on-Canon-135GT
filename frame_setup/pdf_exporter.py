@@ -115,7 +115,6 @@ def _show_pdf_page_transformed(
     target_doc.ShownPages[page_id] = xref
     return xref
 
-
 @dataclass
 class ExportResult:
     outline_path: str
@@ -194,7 +193,9 @@ class PDFBuilder:
                         center_y + logo_height / 2,
                     )
                     rotate = self.params.rotate_bottom and placement.row == 0
+
                     self._place_logo(page, logo_doc, logo_page, dest_rect, rotate)
+                    self._place_logo(page, logo_page, dest_rect, rotate)
             finally:
                 logo_doc.close()
             doc.save(self.params.artwork_path, deflate=True, garbage=4)
@@ -204,11 +205,14 @@ class PDFBuilder:
     def _place_logo(
         self,
         page: fitz.Page,
+
         logo_doc: fitz.Document,
+
         logo_page: fitz.Page,
         dest_rect: fitz.Rect,
         rotate_bottom: bool,
     ) -> None:
+
         rotate_degrees = 180 if rotate_bottom else 0
         try:
             _show_pdf_page_transformed(
@@ -242,5 +246,17 @@ class PDFBuilder:
                     logo_page.rect.height,
                 ) * transform
             pix = logo_page.get_pixmap(matrix=transform)
+
+        matrix = fitz.Matrix(1, 0, 0, 1)
+        if self.params.flip_in_app:
+            matrix = fitz.Matrix(-1, 0, 0, 1) * matrix
+        if rotate_bottom:
+            matrix = fitz.Matrix(-1, 0, 0, -1) * matrix
+        try:
+            page.show_pdf_page(dest_rect, logo_page, 0, matrix=matrix)
+        except Exception:
+            if not self.params.allow_raster_fallback:
+                raise
+            pix = logo_page.get_pixmap(matrix=fitz.Matrix(600 / 72, 0, 0, 600 / 72))
             page.insert_image(dest_rect, pixmap=pix)
 

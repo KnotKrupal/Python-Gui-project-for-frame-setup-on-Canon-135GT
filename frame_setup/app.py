@@ -77,6 +77,7 @@ class FrameSetupApp(ttk.Frame):
         self._bind_variable_updates()
         self.update_cluster_capacity()
         self.update_preview()
+
         self.set_status("Ready")
 
     def _create_style(self) -> None:
@@ -115,6 +116,9 @@ class FrameSetupApp(ttk.Frame):
         self.progress_var = tk.DoubleVar(value=0.0)
         self._preview_after_id: Optional[str] = None
         self.preview_canvas: Optional[tk.Canvas] = None
+        self.status_var = tk.StringVar()
+        self.progress_var = tk.DoubleVar(value=0.0)
+
 
     def _build_layout(self) -> None:
         container = ttk.Frame(self)
@@ -239,6 +243,7 @@ class FrameSetupApp(ttk.Frame):
             font=("Segoe UI", 9, "italic"),
         ).grid(row=row, column=0, columnspan=4, sticky="w", pady=(4, 0))
 
+
     def _build_options(self, parent: ttk.Frame) -> None:
         frame = ttk.LabelFrame(parent, text="Options & Live Metrics")
         frame.grid(row=0, column=1, sticky="nsew", pady=(0, 12))
@@ -279,6 +284,7 @@ class FrameSetupApp(ttk.Frame):
         for var in [self.glass_width_var, self.bed_width_var, self.cluster_gap_var]:
             var.trace_add("write", lambda *_: self.update_cluster_capacity())
         self.cluster_var.trace_add("write", lambda *_: self.update_cluster_capacity())
+
         preview_vars = [
             self.glass_width_var,
             self.glass_height_var,
@@ -297,6 +303,11 @@ class FrameSetupApp(ttk.Frame):
         self.update_cluster_capacity()
         self.schedule_preview_update()
 
+
+    def _on_cluster_spin(self) -> None:
+        self.update_cluster_capacity()
+
+
     def set_status(self, message: str) -> None:
         self.status_var.set(message)
         self.master.update_idletasks()
@@ -313,13 +324,16 @@ class FrameSetupApp(ttk.Frame):
         except ValueError:
             self.cluster_info_var.set("Enter numeric values to compute capacity")
             self.schedule_preview_update()
+
             return
         capacity = calculate_capacity_from_values(glass_width, bed_width, cluster_gap)
         if capacity < 1:
             self.cluster_spin.configure(to=1)
             self.cluster_var.set(1)
             self.cluster_info_var.set("No clusters fit current bed width")
+
             self.schedule_preview_update()
+
             return
         self.cluster_spin.configure(to=capacity)
         current = self.cluster_var.get()
@@ -332,6 +346,7 @@ class FrameSetupApp(ttk.Frame):
         frames_selected = current * 4
         info = f"Clusters: {current}/{capacity}  •  Frames ready: {frames_selected}"
         self.cluster_info_var.set(info)
+
         self.schedule_preview_update()
 
     def schedule_preview_update(self) -> None:
@@ -548,6 +563,7 @@ class FrameSetupApp(ttk.Frame):
             font=("Segoe UI", 11),
         )
 
+
     def _choose_output_directory(self) -> None:
         directory = filedialog.askdirectory(initialdir=self.output_dir_var.get() or os.getcwd())
         if directory:
@@ -578,6 +594,7 @@ class FrameSetupApp(ttk.Frame):
             self.selected_logo_var.set(f"Loaded: {os.path.basename(file_path)}")
             self.set_status("Logo loaded successfully")
             self.schedule_preview_update()
+
         except GhostscriptError as exc:
             messagebox.showerror("Ghostscript error", str(exc))
             self.set_status("Ghostscript conversion failed")
