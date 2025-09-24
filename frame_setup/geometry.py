@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+
 from typing import List
+
+from typing import Iterable, List
+
 
 import fitz
 
@@ -12,14 +16,12 @@ from .utils import inch_to_pt, mm_to_pt
 @dataclass
 class FramePlacement:
     cluster_index: int
-    cluster_row: int
     row: int  # 0 bottom, 1 top
     column: int
     x: float
     y: float
     width: float
     height: float
-    active: bool = True
 
     @property
     def rect(self) -> fitz.Rect:
@@ -33,9 +35,7 @@ class Layout:
     glass_width: float
     glass_height: float
     cluster_gap: float
-    row_gap: float
     placements: List[FramePlacement]
-    frames_requested: int
 
     @property
     def cluster_width(self) -> float:
@@ -54,6 +54,52 @@ class MatteGeometry:
     opening_width_mm: float
     opening_height_mm: float
     visible_band_mm: float
+
+def calculate_cluster_capacity(params: JobParameters) -> int:
+    cluster_width_mm = params.glass_width_mm * 2
+    bed_width_mm = params.bed_width_in * 25.4
+    if cluster_width_mm <= 0:
+        return 0
+    if params.cluster_gap_mm < 0:
+        return 0
+    numerator = bed_width_mm + params.cluster_gap_mm
+    denominator = cluster_width_mm + params.cluster_gap_mm
+    capacity = int(numerator // denominator)
+    return max(capacity, 0)
+
+
+def build_layout(params: JobParameters) -> Layout:
+    page_width = inch_to_pt(params.bed_width_in)
+    glass_width = mm_to_pt(params.glass_width_mm)
+    glass_height = mm_to_pt(params.glass_height_mm)
+    cluster_gap = mm_to_pt(params.cluster_gap_mm)
+    placements: List[FramePlacement] = []
+    for cluster_index in range(params.cluster_count):
+        base_x = cluster_index * (2 * glass_width + cluster_gap)
+        for row in range(2):  # 0 bottom, 1 top
+            y = row * glass_height
+            for column in range(2):
+                x = base_x + column * glass_width
+                placements.append(
+                    FramePlacement(
+                        cluster_index=cluster_index,
+                        row=row,
+                        column=column,
+                        x=x,
+                        y=y,
+                        width=glass_width,
+                        height=glass_height,
+                    )
+                )
+    page_height = 2 * glass_height
+    return Layout(
+        page_width=page_width,
+        page_height=page_height,
+        glass_width=glass_width,
+        glass_height=glass_height,
+        cluster_gap=cluster_gap,
+        placements=placements,
+    )
 
 
 def calculate_matte_geometry(
@@ -87,11 +133,7 @@ def calculate_matte_geometry(
     )
 
 
-def calculate_capacity_from_values(
-    glass_width_mm: float,
-    bed_width_in: float,
-    cluster_gap_mm: float,
-) -> int:
+def calculate_capacity_from_values(glass_width_mm: float, bed_width_in: float, cluster_gap_mm: float) -> int:
     cluster_width_mm = glass_width_mm * 2
     bed_width_mm = bed_width_in * 25.4
     if cluster_width_mm <= 0:
@@ -103,67 +145,3 @@ def calculate_capacity_from_values(
     capacity = int(numerator // denominator)
     return max(capacity, 0)
 
-
-def calculate_vertical_capacity(
-    glass_height_mm: float,
-    bed_height_in: float,
-    row_gap_mm: float,
-) -> int:
-    cluster_height_mm = glass_height_mm * 2
-    bed_height_mm = bed_height_in * 25.4
-    if cluster_height_mm <= 0:
-        return 0
-    if row_gap_mm < 0:
-        return 0
-    numerator = bed_height_mm + row_gap_mm
-    denominator = cluster_height_mm + row_gap_mm
-    capacity = int(numerator // denominator)
-    return max(capacity, 0)
-
-
-def build_layout(params: JobParameters) -> Layout:
-    page_width = inch_to_pt(params.bed_width_in)
-    page_height = inch_to_pt(params.bed_height_in)
-    glass_width = mm_to_pt(params.glass_width_mm)
-    glass_height = mm_to_pt(params.glass_height_mm)
-    cluster_gap = mm_to_pt(params.cluster_gap_mm)
-    row_gap = mm_to_pt(params.row_gap_mm)
-
-    placements: List[FramePlacement] = []
-    frames_requested = max(params.frame_quantity, 0)
-    frame_counter = 0
-
-    for cluster_row in range(params.cluster_rows):
-        base_y = cluster_row * (2 * glass_height + row_gap)
-        for cluster_index in range(params.cluster_count):
-            base_x = cluster_index * (2 * glass_width + cluster_gap)
-            for row in range(2):
-                y = base_y + row * glass_height
-                for column in range(2):
-                    x = base_x + column * glass_width
-                    frame_counter += 1
-                    active = frame_counter <= frames_requested or frames_requested == 0
-                    placements.append(
-                        FramePlacement(
-                            cluster_index=cluster_index,
-                            cluster_row=cluster_row,
-                            row=row,
-                            column=column,
-                            x=x,
-                            y=y,
-                            width=glass_width,
-                            height=glass_height,
-                            active=active,
-                        )
-                    )
-
-    return Layout(
-        page_width=page_width,
-        page_height=page_height,
-        glass_width=glass_width,
-        glass_height=glass_height,
-        cluster_gap=cluster_gap,
-        row_gap=row_gap,
-        placements=placements,
-        frames_requested=frames_requested,
-    )

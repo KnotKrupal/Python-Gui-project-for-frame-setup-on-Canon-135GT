@@ -13,8 +13,10 @@ from .geometry import (
     MatteGeometry,
     calculate_capacity_from_values,
     calculate_matte_geometry,
-    calculate_vertical_capacity,
+
 )
+
+from .geometry import calculate_capacity_from_values
 from .models import JobParameters, LogoAsset
 from .pdf_exporter import PDFBuilder
 from .utils import (
@@ -103,20 +105,14 @@ class FrameSetupApp(ttk.Frame):
         self.matte_total_var = tk.StringVar(value="120")
         self.cluster_gap_var = tk.StringVar(value="15")
         self.bed_width_var = tk.StringVar(value="96")
-        self.bed_height_var = tk.StringVar(value="48")
         self.outline_thickness_var = tk.StringVar(value="0.5")
         self.cluster_var = tk.IntVar(value=1)
-        self.cluster_rows_var = tk.IntVar(value=1)
-        self.frame_quantity_var = tk.IntVar(value=4)
         self.color_var = tk.StringVar(value=DEFAULT_COLOR_NAME)
         self.flip_var = tk.BooleanVar(value=False)
         self.raster_fallback_var = tk.BooleanVar(value=False)
         self.rotate_bottom_var = tk.BooleanVar(value=True)
-        self.export_outlines_var = tk.BooleanVar(value=True)
-        self.export_artwork_var = tk.BooleanVar(value=True)
         self.output_dir_var = tk.StringVar(value=os.getcwd())
         self.cluster_info_var = tk.StringVar(value="")
-        self.frame_info_var = tk.StringVar(value="")
         self.logo_info_var = tk.StringVar(value="Logo size: --")
         self.selected_logo_var = tk.StringVar(value="No logo loaded")
         self.preview_message_var = tk.StringVar(
@@ -126,8 +122,12 @@ class FrameSetupApp(ttk.Frame):
         self.progress_var = tk.DoubleVar(value=0.0)
         self._preview_after_id: Optional[str] = None
         self.preview_canvas: Optional[tk.Canvas] = None
+
         self.reference_canvas: Optional[tk.Canvas] = None
-        self.row_gap_var = tk.StringVar(value="25")
+
+        self.status_var = tk.StringVar()
+        self.progress_var = tk.DoubleVar(value=0.0)
+
 
     def _build_layout(self) -> None:
         container = ttk.Frame(self)
@@ -170,12 +170,6 @@ class FrameSetupApp(ttk.Frame):
         ttk.Entry(frame, textvariable=self.bed_width_var).grid(row=row, column=3, sticky="ew", pady=4)
 
         row += 1
-        ttk.Label(frame, text="Row gap (mm):").grid(row=row, column=0, sticky="w", pady=4)
-        ttk.Entry(frame, textvariable=self.row_gap_var).grid(row=row, column=1, sticky="ew", pady=4)
-        ttk.Label(frame, text="Bed height (inches):").grid(row=row, column=2, sticky="w", pady=4)
-        ttk.Entry(frame, textvariable=self.bed_height_var).grid(row=row, column=3, sticky="ew", pady=4)
-
-        row += 1
         ttk.Label(frame, text="Outline color:").grid(row=row, column=0, sticky="w", pady=4)
         color_combo = ttk.Combobox(
             frame,
@@ -203,55 +197,12 @@ class FrameSetupApp(ttk.Frame):
         cluster_info.grid(row=row, column=2, columnspan=2, sticky="w", pady=4)
 
         row += 1
-        ttk.Label(frame, text="Cluster rows:").grid(row=row, column=0, sticky="w", pady=4)
-        row_spin = ttk.Spinbox(
-            frame,
-            from_=1,
-            to=5,
-            textvariable=self.cluster_rows_var,
-            width=6,
-            command=self._on_cluster_spin,
-        )
-        row_spin.grid(row=row, column=1, sticky="w", pady=4)
-        self.cluster_rows_spin = row_spin
-        ttk.Label(frame, text="Frame quantity:").grid(row=row, column=2, sticky="w", pady=4)
-        frame_spin = ttk.Spinbox(
-            frame,
-            from_=1,
-            to=4,
-            textvariable=self.frame_quantity_var,
-            width=8,
-            command=self._on_frame_quantity_spin,
-        )
-        frame_spin.grid(row=row, column=3, sticky="w", pady=4)
-        self.frame_quantity_spin = frame_spin
-
-        row += 1
-        ttk.Label(frame, textvariable=self.frame_info_var).grid(
-            row=row, column=0, columnspan=4, sticky="w", pady=(0, 4)
-        )
-
-        row += 1
         ttk.Label(frame, text="Output directory:").grid(row=row, column=0, sticky="w", pady=4)
         output_entry = ttk.Entry(frame, textvariable=self.output_dir_var)
         output_entry.grid(row=row, column=1, columnspan=2, sticky="ew", pady=4)
         ttk.Button(frame, text="Browse", command=self._choose_output_directory).grid(
             row=row, column=3, sticky="ew", pady=4
         )
-
-        row += 1
-        checkbox_row = ttk.Frame(frame)
-        checkbox_row.grid(row=row, column=0, columnspan=4, sticky="w", pady=(12, 0))
-        ttk.Checkbutton(
-            checkbox_row,
-            text="Export outlines",
-            variable=self.export_outlines_var,
-        ).pack(side="left", padx=(0, 12))
-        ttk.Checkbutton(
-            checkbox_row,
-            text="Export artwork",
-            variable=self.export_artwork_var,
-        ).pack(side="left")
 
         row += 1
         ttk.Button(frame, text="Load EPS Logo", command=self._load_logo).grid(
@@ -290,6 +241,11 @@ class FrameSetupApp(ttk.Frame):
 
         layout_preview = tk.Canvas(
             preview_container,
+        )
+
+        preview = tk.Canvas(
+            frame,
+
             height=240,
             background="#f9f9fb",
             highlightthickness=1,
@@ -311,6 +267,12 @@ class FrameSetupApp(ttk.Frame):
         reference_preview.bind("<Configure>", lambda event: self.schedule_preview_update())
         self.preview_canvas = layout_preview
         self.reference_canvas = reference_preview
+
+        preview.grid(row=row, column=0, columnspan=4, sticky="nsew", pady=(4, 0))
+        frame.rowconfigure(row, weight=1)
+        preview.bind("<Configure>", lambda event: self.schedule_preview_update())
+        self.preview_canvas = preview
+
 
         row += 1
         ttk.Label(
@@ -339,14 +301,13 @@ class FrameSetupApp(ttk.Frame):
         ttk.Label(frame, text="Capacity", style="Header.TLabel").grid(row=5, column=0, sticky="w")
         capacity_label = ttk.Label(frame, textvariable=self.cluster_info_var)
         capacity_label.grid(row=6, column=0, sticky="w", pady=4)
-        ttk.Label(frame, textvariable=self.frame_info_var).grid(row=7, column=0, sticky="w")
 
-        ttk.Label(frame, text="Guidance", style="Header.TLabel").grid(row=8, column=0, sticky="w", pady=(12, 4))
+        ttk.Label(frame, text="Guidance", style="Header.TLabel").grid(row=7, column=0, sticky="w", pady=(12, 4))
         guidance_text = (
             "Clusters are placed from the origin (0,0) in the lower-left corner.\n"
             "Artwork and outlines share the same sheet size for guaranteed alignment."
         )
-        ttk.Label(frame, text=guidance_text, wraplength=280, justify="left").grid(row=9, column=0, sticky="w")
+        ttk.Label(frame, text=guidance_text, wraplength=280, justify="left").grid(row=8, column=0, sticky="w")
 
     def _build_footer(self) -> None:
         footer = ttk.Frame(self)
@@ -357,17 +318,10 @@ class FrameSetupApp(ttk.Frame):
         status.pack(fill="x", side="top", pady=(4, 0))
 
     def _bind_variable_updates(self) -> None:
-        for var in [
-            self.glass_width_var,
-            self.bed_width_var,
-            self.cluster_gap_var,
-            self.bed_height_var,
-            self.row_gap_var,
-        ]:
+        for var in [self.glass_width_var, self.bed_width_var, self.cluster_gap_var]:
             var.trace_add("write", lambda *_: self.update_cluster_capacity())
         self.cluster_var.trace_add("write", lambda *_: self.update_cluster_capacity())
-        self.cluster_rows_var.trace_add("write", lambda *_: self.update_cluster_capacity())
-        self.frame_quantity_var.trace_add("write", lambda *_: self._sync_frame_quantity())
+
         preview_vars = [
             self.glass_width_var,
             self.glass_height_var,
@@ -375,13 +329,9 @@ class FrameSetupApp(ttk.Frame):
             self.matte_total_var,
             self.cluster_gap_var,
             self.bed_width_var,
-            self.bed_height_var,
             self.cluster_var,
-            self.cluster_rows_var,
             self.rotate_bottom_var,
             self.flip_var,
-            self.row_gap_var,
-            self.frame_quantity_var,
         ]
         for var in preview_vars:
             var.trace_add("write", lambda *_: self.schedule_preview_update())
@@ -390,9 +340,11 @@ class FrameSetupApp(ttk.Frame):
         self.update_cluster_capacity()
         self.schedule_preview_update()
 
-    def _on_frame_quantity_spin(self) -> None:
-        self._sync_frame_quantity()
-        self.schedule_preview_update()
+
+
+    def _on_cluster_spin(self) -> None:
+        self.update_cluster_capacity()
+
 
     def set_status(self, message: str) -> None:
         self.status_var.set(message)
@@ -407,80 +359,58 @@ class FrameSetupApp(ttk.Frame):
             glass_width = float(self.glass_width_var.get())
             bed_width = float(self.bed_width_var.get())
             cluster_gap = float(self.cluster_gap_var.get())
-            glass_height = float(self.glass_height_var.get())
-            bed_height = float(self.bed_height_var.get())
-            row_gap = float(self.row_gap_var.get())
         except ValueError:
             self.cluster_info_var.set("Enter numeric values to compute capacity")
-            self.frame_info_var.set("")
             self.schedule_preview_update()
+
             return
-        horizontal_capacity = calculate_capacity_from_values(glass_width, bed_width, cluster_gap)
-        vertical_capacity = calculate_vertical_capacity(glass_height, bed_height, row_gap)
+        capacity = calculate_capacity_from_values(glass_width, bed_width, cluster_gap)
+        if capacity < 1:
+            self.cluster_spin.configure(to=1)
+            self.cluster_var.set(1)
+            self.cluster_info_var.set("No clusters fit current bed width")
 
-        max_horizontal = max(horizontal_capacity, 1)
-        max_vertical = max(vertical_capacity, 1)
+            self.schedule_preview_update()
 
-        self.cluster_spin.configure(to=max_horizontal)
-        self.cluster_rows_spin.configure(to=max_vertical)
 
-        clusters = self.cluster_var.get()
-        if clusters < 1:
-            clusters = 1
-        if clusters > max_horizontal:
-            clusters = max_horizontal
-        if clusters != self.cluster_var.get():
-            self.cluster_var.set(clusters)
+            self.schedule_preview_update()
 
-        cluster_rows = self.cluster_rows_var.get()
-        if cluster_rows < 1:
-            cluster_rows = 1
-        if cluster_rows > max_vertical:
-            cluster_rows = max_vertical
-        if cluster_rows != self.cluster_rows_var.get():
-            self.cluster_rows_var.set(cluster_rows)
+            return
+        self.cluster_spin.configure(to=capacity)
+        current = self.cluster_var.get()
+        if current < 1:
+            current = 1
+        if current > capacity:
+            current = capacity
+        if current != self.cluster_var.get():
+            self.cluster_var.set(current)
+        frames_selected = current * 4
+        info = f"Clusters: {current}/{capacity}  •  Frames ready: {frames_selected}"
+        self.cluster_info_var.set(info)
 
-        max_frames = clusters * cluster_rows * 4
-        self._sync_frame_quantity(max_frames)
-
-        if horizontal_capacity < 1 or vertical_capacity < 1:
-            self.cluster_info_var.set("No clusters fit current bed size")
-        else:
-            info = (
-                f"Clusters: {clusters}/{horizontal_capacity} across × "
-                f"{cluster_rows}/{vertical_capacity} high"
-            )
-            self.cluster_info_var.set(info)
         self.schedule_preview_update()
-
-    def _sync_frame_quantity(self, max_frames: Optional[int] = None) -> None:
-        if max_frames is None:
-            max_frames = max(self.cluster_var.get() * self.cluster_rows_var.get() * 4, 1)
-        else:
-            max_frames = max(max_frames, 1)
-        try:
-            requested = int(self.frame_quantity_var.get())
-        except (ValueError, tk.TclError):
-            requested = 1
-        if requested < 1:
-            requested = 1
-        if requested > max_frames:
-            requested = max_frames
-            self.frame_quantity_var.set(requested)
-        self.frame_quantity_spin.configure(to=max_frames)
-        self.frame_info_var.set(f"Frames scheduled: {requested} / {max_frames}")
 
     def schedule_preview_update(self) -> None:
         if not self.preview_canvas or not self.reference_canvas:
+
+            self.schedule_preview_update()
+
+    def schedule_preview_update(self) -> None:
+        if getattr(self, "preview_canvas", None) is None:
+
             return
         if self._preview_after_id is not None:
             self.after_cancel(self._preview_after_id)
         self._preview_after_id = self.after(75, self.update_preview)
 
     def update_preview(self) -> None:
+
         layout_canvas = self.preview_canvas
         reference_canvas = self.reference_canvas
         if layout_canvas is None or reference_canvas is None:
+            canvas = getattr(self, "preview_canvas", None)
+        if canvas is None:
+
             return
         if self._preview_after_id is not None:
             self.after_cancel(self._preview_after_id)
@@ -515,6 +445,14 @@ class FrameSetupApp(ttk.Frame):
             self._preview_after_id = self.after(120, self.update_preview)
             return
 
+
+        canvas.delete("all")
+        width = max(int(canvas.winfo_width()), int(float(canvas.cget("width"))))
+        height = max(int(canvas.winfo_height()), int(float(canvas.cget("height"))))
+        if width <= 2 or height <= 2:
+            self._preview_after_id = self.after(120, self.update_preview)
+            return
+
         try:
             glass_width = float(self.glass_width_var.get())
             glass_height = float(self.glass_height_var.get())
@@ -522,9 +460,8 @@ class FrameSetupApp(ttk.Frame):
             matte_total = float(self.matte_total_var.get())
             cluster_gap = float(self.cluster_gap_var.get())
             bed_width_in = float(self.bed_width_var.get())
-            bed_height_in = float(self.bed_height_var.get())
-            row_gap = float(self.row_gap_var.get())
         except ValueError:
+
             message = "Preview unavailable: provide numeric values for dimensions."
             self._render_preview_message(
                 layout_canvas,
@@ -541,12 +478,7 @@ class FrameSetupApp(ttk.Frame):
             self.preview_message_var.set(message)
             return
 
-        if (
-            glass_width <= 0
-            or glass_height <= 0
-            or bed_width_in <= 0
-            or bed_height_in <= 0
-        ):
+        if glass_width <= 0 or glass_height <= 0 or bed_width_in <= 0:
             message = "Preview unavailable: dimensions must be positive."
             info_text = "Enter positive dimensions to view layout"
             self._render_preview_message(layout_canvas, layout_width, layout_height, info_text)
@@ -560,20 +492,29 @@ class FrameSetupApp(ttk.Frame):
             return
 
         cluster_count = max(self.cluster_var.get(), 1)
-        cluster_rows = max(self.cluster_rows_var.get(), 1)
-        frame_quantity = max(self.frame_quantity_var.get(), 1)
+        cluster_height = glass_height * 2
+        if cluster_height <= 0:
+            message = "Preview unavailable: check glass height and matte values."
+            self._render_preview_message(
+                layout_canvas,
+                layout_width,
+                layout_height,
+                "Invalid height values",
+            )
+            self._render_preview_message(
+                reference_canvas,
+                reference_width,
+                reference_height,
+                "Invalid height values",
+            )
+            self.preview_message_var.set(message)
+            return
 
         matte = calculate_matte_geometry(glass_width, glass_height, indent, matte_total)
         bed_width_mm = bed_width_in * 25.4
-        bed_height_mm = bed_height_in * 25.4
         cluster_width = glass_width * 2
-        cluster_height = glass_height * 2
         gap = max(cluster_gap, 0.0)
-        row_gap_mm = max(row_gap, 0.0)
         total_clusters_width = cluster_count * cluster_width + max(cluster_count - 1, 0) * gap
-        total_clusters_height = (
-            cluster_rows * cluster_height + max(cluster_rows - 1, 0) * row_gap_mm
-        )
 
         logo_width_mm = logo_height_mm = 0.0
         has_logo = False
@@ -582,55 +523,21 @@ class FrameSetupApp(ttk.Frame):
             logo_height_mm = pt_to_mm(self.logo_asset.height_pt)
             has_logo = logo_width_mm > 0 and logo_height_mm > 0
 
-        placements: list[dict[str, float | int | bool]] = []
-        frame_counter = 0
-        for cluster_row in range(cluster_rows):
-            base_y = cluster_row * (cluster_height + row_gap_mm)
-            for cluster_index in range(cluster_count):
-                base_x = cluster_index * (cluster_width + gap)
-                for row in range(2):
-                    frame_y = base_y + row * glass_height
-                    for column in range(2):
-                        frame_x = base_x + column * glass_width
-                        frame_counter += 1
-                        active = frame_counter <= frame_quantity
-                        placements.append(
-                            {
-                                "cluster_index": cluster_index,
-                                "cluster_row": cluster_row,
-                                "row": row,
-                                "column": column,
-                                "x_mm": frame_x,
-                                "y_mm": frame_y,
-                                "active": active,
-                                "index": frame_counter,
-                            }
-                        )
-
-        active_count = sum(1 for p in placements if p["active"])
-
         arrangement_data = {
             "glass_width_mm": glass_width,
             "glass_height_mm": glass_height,
             "indent_mm": max(indent, 0.0),
             "cluster_count": cluster_count,
-            "cluster_rows": cluster_rows,
             "cluster_gap_mm": gap,
-            "row_gap_mm": row_gap_mm,
             "bed_width_mm": bed_width_mm,
-            "bed_height_mm": bed_height_mm,
             "total_clusters_width_mm": total_clusters_width,
-            "total_clusters_height_mm": total_clusters_height,
+            "cluster_height_mm": cluster_height,
             "logo_width_mm": logo_width_mm,
             "logo_height_mm": logo_height_mm,
             "has_logo": has_logo,
             "rotate_bottom": self.rotate_bottom_var.get(),
             "flip_in_app": self.flip_var.get(),
             "visible_band_mm": matte.visible_band_mm,
-            "placements": placements,
-            "frame_quantity": frame_quantity,
-            "active_count": active_count,
-            "max_frames": len(placements),
         }
 
         self._draw_arrangement_preview(
@@ -648,26 +555,16 @@ class FrameSetupApp(ttk.Frame):
             matte,
         )
 
-        width_text: str
         if bed_width_mm > 0:
-            width_ratio = total_clusters_width / bed_width_mm
-            width_prefix = "⚠️ " if width_ratio > 1.001 else ""
-            width_text = (
-                f"{width_prefix}Width usage: {total_clusters_width:.1f} / {bed_width_mm:.1f} mm"
-                f" ({width_ratio * 100:.0f}%)"
+            usage_ratio = total_clusters_width / bed_width_mm
+            usage_pct = usage_ratio * 100.0
+            prefix = "⚠️ " if usage_ratio > 1.001 else ""
+            usage_text = (
+                f"{prefix}Width usage: {total_clusters_width:.1f} / {bed_width_mm:.1f} mm"
+                f" ({usage_pct:.0f}%)"
             )
         else:
-            width_text = f"Total layout width: {total_clusters_width:.1f} mm"
-
-        if bed_height_mm > 0:
-            height_ratio = total_clusters_height / bed_height_mm if bed_height_mm else 0.0
-            height_prefix = "⚠️ " if height_ratio > 1.001 else ""
-            height_text = (
-                f"{height_prefix}Height usage: {total_clusters_height:.1f} / {bed_height_mm:.1f} mm"
-                f" ({height_ratio * 100:.0f}%)"
-            )
-        else:
-            height_text = f"Total layout height: {total_clusters_height:.1f} mm"
+            usage_text = f"Total width: {total_clusters_width:.1f} mm"
 
         rotation_text = (
             "Bottom row logos rotated 180°"
@@ -685,12 +582,8 @@ class FrameSetupApp(ttk.Frame):
             logo_text = f"Logo: {logo_width_mm:.1f} × {logo_height_mm:.1f} mm"
         else:
             logo_text = "Logo: load EPS to preview placement"
-        frames_text = (
-            f"Frames scheduled: {active_count} / {len(placements)}"
-        )
         self.preview_message_var.set(
-            f"{width_text}\n{height_text}\n{matte_text}\n{borders_text}\n"
-            f"{rotation_text} • {flip_text}\n{frames_text}\n{logo_text}"
+            f"{usage_text}\n{matte_text}\n{borders_text}\n{rotation_text} • {flip_text}\n{logo_text}"
         )
 
     def _draw_arrangement_preview(
@@ -698,30 +591,56 @@ class FrameSetupApp(ttk.Frame):
         canvas: tk.Canvas,
         width: int,
         height: int,
-        data: dict[str, float | int | bool | list],
+        data: dict[str, float | bool],
         matte: MatteGeometry,
     ) -> None:
         margin = 16
         usable_width = max(width - margin * 2, 1)
         usable_height = max(height - margin * 2, 1)
-
-        bed_width_mm = float(data["bed_width_mm"])
-        bed_height_mm = float(data["bed_height_mm"])
-        total_width_mm = float(data["total_clusters_width_mm"])
-        total_height_mm = float(data["total_clusters_height_mm"])
-        glass_width_mm = float(data["glass_width_mm"])
-        glass_height_mm = float(data["glass_height_mm"])
-        row_gap_mm = float(data["row_gap_mm"])
-        cluster_rows = int(data["cluster_rows"])
-
-        content_width = max(bed_width_mm, total_width_mm, 1.0)
-        content_height = max(bed_height_mm, total_height_mm, 1.0)
-        scale = min(usable_width / content_width, usable_height / content_height)
+        content_width = max(float(data["bed_width_mm"]), float(data["total_clusters_width_mm"]), 1.0)
+        scale_x = usable_width / content_width
+        scale_y = usable_height / float(data["cluster_height_mm"])
+        scale = min(scale_x, scale_y)
 
         bed_left = margin
         bed_bottom = height - margin
+        bed_right = bed_left + float(data["bed_width_mm"]) * scale
+        bed_top = bed_bottom - float(data["cluster_height_mm"]) * scale
+
+        self._render_preview_message(canvas, width, height, "Enter numeric values")
+        self.preview_message_var.set("Preview unavailable: provide numeric values for dimensions.")
+            
+        if glass_width <= 0 or glass_height <= 0 or bed_width_in <= 0:
+            self._render_preview_message(
+                canvas,
+                width,
+                height,
+                "Enter positive dimensions to view layout",
+            )
+            self.preview_message_var.set("Preview unavailable: dimensions must be positive.")
+            return
+        cluster_count = max(self.cluster_var.get(), 1)
+        cluster_width = glass_width * 2
+        cluster_height = glass_height * 2
+        if cluster_height <= 0:
+            self._render_preview_message(canvas, width, height, "Invalid height values")
+            self.preview_message_var.set("Preview unavailable: check glass height and matte values.")
+            return
+        gap = max(cluster_gap, 0.0)
+        total_clusters_width = cluster_count * cluster_width + max(cluster_count - 1, 0) * gap
+        bed_width_mm = bed_width_in * 25.4
+        content_width = max(bed_width_mm, total_clusters_width, 1.0)
+        margin = 16
+        usable_width = max(width - margin * 2, 1)
+        usable_height = max(height - margin * 2, 1)
+        scale_x = usable_width / content_width
+        scale_y = usable_height / cluster_height
+        scale = min(scale_x, scale_y)
+        bed_left = margin
+        bed_bottom = height - margin
         bed_right = bed_left + bed_width_mm * scale
-        bed_top = bed_bottom - bed_height_mm * scale
+        bed_top = bed_bottom - cluster_height * scale
+        bed_outline_color = "#4c5c78"
 
         canvas.create_rectangle(
             bed_left,
@@ -732,18 +651,24 @@ class FrameSetupApp(ttk.Frame):
             width=1.4,
         )
 
-        arrangement_right = bed_left + total_width_mm * scale
-        for cluster_row in range(cluster_rows):
-            seam_mm = cluster_row * (2 * glass_height_mm + row_gap_mm) + glass_height_mm
-            seam_y = bed_bottom - seam_mm * scale
-            canvas.create_line(
-                bed_left,
-                seam_y,
-                arrangement_right,
-                seam_y,
-                fill="#9fa8b8",
-                dash=(4, 3),
-            )
+        seam_y = bed_bottom - float(data["glass_height_mm"]) * scale
+        arrangement_right = bed_left + float(data["total_clusters_width_mm"]) * scale
+
+        outline=bed_outline_color
+        width=1.4
+        
+        seam_y = bed_bottom - glass_height * scale
+        arrangement_right = bed_left + total_clusters_width * scale
+
+        canvas.create_line(
+            bed_left,
+            seam_y,
+            arrangement_right,
+            seam_y,
+            fill="#9fa8b8",
+            dash=(4, 3),
+        )
+
 
         frame_fills = ["#fbe3d8", "#d8e5fb"]
         matte_color = "#f2ddc6"
@@ -755,178 +680,219 @@ class FrameSetupApp(ttk.Frame):
         logo_height_mm = float(data["logo_height_mm"])
         rotate_bottom = bool(data["rotate_bottom"])
 
-        for placement in data["placements"]:
-            frame_x = float(placement["x_mm"])
-            frame_y = float(placement["y_mm"])
-            row = int(placement["row"])
-            active = bool(placement["active"])
-            index = int(placement.get("index", 0))
+        for cluster_index in range(int(data["cluster_count"])):
+            base_x = cluster_index * (float(data["glass_width_mm"]) * 2 + float(data["cluster_gap_mm"]))
+            for row in range(2):
+                for column in range(2):
+                    frame_x = base_x + column * float(data["glass_width_mm"])
+                    frame_y = row * float(data["glass_height_mm"])
+                    left = bed_left + frame_x * scale
+                    right = left + float(data["glass_width_mm"]) * scale
+                    top = bed_bottom - (frame_y + float(data["glass_height_mm"])) * scale
 
-            left = bed_left + frame_x * scale
-            right = left + glass_width_mm * scale
-            top = bed_bottom - (frame_y + glass_height_mm) * scale
-            bottom = bed_bottom - frame_y * scale
+        frame_fills = ["#fbe3d8", "#d8e5fb"]
+        band_color = "#c6efd0"
+        visible_band = max(matte_total - indent, 0.0)
+        band_height = min(visible_band, glass_height)
+        rotate_bottom = self.rotate_bottom_var.get()
+        flip_in_app = self.flip_var.get()
+        logo_width_mm = logo_height_mm = 0.0
+        indent_mm = max(indent, 0.0)
+        if self.logo_asset is not None:
+            logo_width_mm = pt_to_mm(self.logo_asset.width_pt)
+            logo_height_mm = pt_to_mm(self.logo_asset.height_pt)
+        has_logo = logo_width_mm > 0 and logo_height_mm > 0 and visible_band > 0
+        for cluster_index in range(cluster_count):
+            base_x = cluster_index * (cluster_width + gap)
+            for row in range(2):
+                for column in range(2):
+                    frame_x = base_x + column * glass_width
+                    frame_y = row * glass_height
+                    left = bed_left + frame_x * scale
+                    right = left + glass_width * scale
+                    top = bed_bottom - (frame_y + glass_height) * scale
 
-            fill_color = frame_fills[row] if active else "#e6e8ef"
-            outline_color = "#596982" if active else "#b3b8c6"
-            canvas.create_rectangle(
-                left,
-                top,
-                right,
-                bottom,
-                fill=fill_color,
-                outline=outline_color,
-                width=1.2 if active else 1.0,
-            )
-
-            if index:
-                label_color = "#2f3a4f" if active else "#7f8797"
-                canvas.create_text(
-                    left + 12,
-                    top + 14,
-                    text=str(index),
-                    fill=label_color,
-                    font=("Segoe UI", 9, "bold"),
-                    anchor="w",
-                )
-
-            if not active:
-                canvas.create_line(left, top, right, bottom, fill="#b6bbc7", width=1)
-                canvas.create_line(left, bottom, right, top, fill="#b6bbc7", width=1)
-                continue
-
-            opening_left_mm = frame_x + matte.side_margin_mm
-            opening_right_mm = frame_x + glass_width_mm - matte.side_margin_mm
-            opening_bottom_mm = frame_y + matte.bottom_margin_mm
-            opening_top_mm = opening_bottom_mm + matte.opening_height_mm
-
-            opening_left = bed_left + opening_left_mm * scale
-            opening_right = bed_left + opening_right_mm * scale
-            opening_bottom = bed_bottom - opening_bottom_mm * scale
-            opening_top = bed_bottom - opening_top_mm * scale
-
-            if opening_left - left > 1:
-                canvas.create_rectangle(
-                    left,
-                    top,
-                    opening_left,
-                    bottom,
-                    fill=matte_color,
-                    outline="",
-                )
-            if right - opening_right > 1:
-                canvas.create_rectangle(
-                    opening_right,
-                    top,
-                    right,
-                    bottom,
-                    fill=matte_color,
-                    outline="",
-                )
-            if opening_top - top > 1:
-                canvas.create_rectangle(
-                    opening_left,
-                    top,
-                    opening_right,
-                    opening_top,
-                    fill=matte_color,
-                    outline="",
-                )
-            if bottom - opening_bottom > 1:
-                canvas.create_rectangle(
-                    opening_left,
-                    opening_bottom,
-                    opening_right,
-                    bottom,
-                    fill=matte_color,
-                    outline="",
-                )
-            if opening_right - opening_left > 2 and opening_bottom - opening_top > 2:
-                canvas.create_rectangle(
-                    opening_left,
-                    opening_top,
-                    opening_right,
-                    opening_bottom,
-                    outline=opening_outline,
-                    width=1.1,
-                    fill="#ffffff",
-                )
-
-            if matte.bottom_margin_mm > 0:
-                bottom_seam = bed_bottom - (frame_y + matte.bottom_margin_mm) * scale
-                canvas.create_line(
-                    opening_left,
-                    bottom_seam,
-                    opening_right,
-                    bottom_seam,
-                    fill="#c6812f",
-                    dash=(4, 2),
-                )
-            if matte.top_margin_mm > 0:
-                top_seam = bed_bottom - (frame_y + glass_height_mm - matte.top_margin_mm) * scale
-                canvas.create_line(
-                    opening_left,
-                    top_seam,
-                    opening_right,
-                    top_seam,
-                    fill="#c6812f",
-                    dash=(4, 2),
-                )
-
-            if has_logo and visible_band_mm > 0 and logo_width_mm > 0 and logo_height_mm > 0:
-                center_x_mm = frame_x + glass_width_mm / 2
-                if row == 1:
-                    center_y_mm = frame_y + visible_band_mm / 2
-                else:
-                    center_y_mm = frame_y + glass_height_mm - visible_band_mm / 2
-                min_center = frame_y + indent_mm + logo_height_mm / 2
-                max_center = frame_y + glass_height_mm - indent_mm - logo_height_mm / 2
-                if min_center > max_center:
-                    min_center = frame_y + logo_height_mm / 2
-                    max_center = frame_y + glass_height_mm - logo_height_mm / 2
-                center_y_mm = max(min(center_y_mm, max_center), min_center)
-
-                logo_left = bed_left + (center_x_mm - logo_width_mm / 2) * scale
-                logo_right = bed_left + (center_x_mm + logo_width_mm / 2) * scale
-                logo_top = bed_bottom - (center_y_mm + logo_height_mm / 2) * scale
-                logo_bottom = bed_bottom - (center_y_mm - logo_height_mm / 2) * scale
-                if logo_right - logo_left > 2 and logo_bottom - logo_top > 2:
+                    bottom = bed_bottom - frame_y * scale
                     canvas.create_rectangle(
-                        logo_left,
-                        logo_top,
-                        logo_right,
-                        logo_bottom,
-                        outline="#1f5137",
-                        width=1.4,
-                        fill="#ffffff",
+                        left,
+                        top,
+                        right,
+                        bottom,
+                        fill=frame_fills[row],
+                        outline="#7a879a",
+                        width=1,
                     )
 
-            arrow_center_x = (left + right) / 2
-            arrow_center_y = (top + bottom) / 2
-            arrow_height = min((bottom - top) * 0.45, 26)
-            arrow_half = arrow_height / 2
-            arrow_width = arrow_half * 0.75
-            pointing_up = row == 1 or (row == 0 and not rotate_bottom)
-            arrow_color = "#2b455d"
-            if pointing_up:
-                points = [
-                    arrow_center_x,
-                    arrow_center_y - arrow_half,
-                    arrow_center_x - arrow_width,
-                    arrow_center_y + arrow_half,
-                    arrow_center_x + arrow_width,
-                    arrow_center_y + arrow_half,
-                ]
-            else:
-                points = [
-                    arrow_center_x,
-                    arrow_center_y + arrow_half,
-                    arrow_center_x - arrow_width,
-                    arrow_center_y - arrow_half,
-                    arrow_center_x + arrow_width,
-                    arrow_center_y - arrow_half,
-                ]
-            canvas.create_polygon(points, fill=arrow_color, outline="")
+
+                    opening_left_mm = frame_x + matte.side_margin_mm
+                    opening_right_mm = frame_x + float(data["glass_width_mm"]) - matte.side_margin_mm
+                    opening_bottom_mm = frame_y + matte.bottom_margin_mm
+                    opening_top_mm = opening_bottom_mm + matte.opening_height_mm
+
+                    opening_left = bed_left + opening_left_mm * scale
+                    opening_right = bed_left + opening_right_mm * scale
+                    opening_bottom = bed_bottom - opening_bottom_mm * scale
+                    opening_top = bed_bottom - opening_top_mm * scale
+
+                    if opening_left - left > 1:
+                        canvas.create_rectangle(
+                            left,
+                            top,
+                            opening_left,
+                            bottom,
+                            fill=matte_color,
+                            outline="",
+                        )
+                    if right - opening_right > 1:
+                        canvas.create_rectangle(
+                            opening_right,
+                            top,
+                            right,
+                            bottom,
+                            fill=matte_color,
+                            outline="",
+                        )
+                    if opening_top - top > 1:
+                        canvas.create_rectangle(
+                            opening_left,
+                            top,
+                            opening_right,
+                            opening_top,
+                            fill=matte_color,
+                            outline="",
+                        )
+                    if bottom - opening_bottom > 1:
+                        canvas.create_rectangle(
+                            opening_left,
+                            opening_bottom,
+                            opening_right,
+                            bottom,
+                            fill=matte_color,
+                            outline="",
+                        )
+                    if opening_right - opening_left > 2 and opening_bottom - opening_top > 2:
+                        canvas.create_rectangle(
+                            opening_left,
+                            opening_top,
+                            opening_right,
+                            opening_bottom,
+                            outline=opening_outline,
+                            width=1,
+                            fill="#ffffff",
+                        )
+
+                    if matte.bottom_margin_mm > 0:
+                        bottom_seam = bed_bottom - (frame_y + matte.bottom_margin_mm) * scale
+                        canvas.create_line(
+                            opening_left,
+                            bottom_seam,
+                            opening_right,
+                            bottom_seam,
+                            fill="#c6812f",
+                            dash=(4, 2),
+                        )
+                    if matte.top_margin_mm > 0:
+                        top_seam = bed_bottom - (
+                            frame_y + float(data["glass_height_mm"]) - matte.top_margin_mm
+                        ) * scale
+                        canvas.create_line(
+                            opening_left,
+                            top_seam,
+                            opening_right,
+                            top_seam,
+                            fill="#c6812f",
+                            dash=(4, 2),
+                        )
+
+                    if has_logo and visible_band_mm > 0 and logo_width_mm > 0 and logo_height_mm > 0:
+                        center_x_mm = frame_x + float(data["glass_width_mm"]) / 2
+                        if row == 1:
+                            center_y_mm = frame_y + visible_band_mm / 2
+                        else:
+                            center_y_mm = frame_y + float(data["glass_height_mm"]) - visible_band_mm / 2
+                        min_center = frame_y + indent_mm + logo_height_mm / 2
+                        max_center = frame_y + float(data["glass_height_mm"]) - indent_mm - logo_height_mm / 2
+                        if min_center > max_center:
+                            min_center = frame_y + logo_height_mm / 2
+                            max_center = frame_y + float(data["glass_height_mm"]) - logo_height_mm / 2
+                        center_y_mm = max(min(center_y_mm, max_center), min_center)
+
+                        logo_left = bed_left + (center_x_mm - logo_width_mm / 2) * scale
+                        logo_right = bed_left + (center_x_mm + logo_width_mm / 2) * scale
+
+                    if band_height > 0:
+                        band_px = band_height * scale
+                        inset = max((right - left) * 0.08, 3)
+                        if row == 0:  # bottom row, band sits at top seam
+                            band_top = top
+                            band_bottom = min(bottom, top + band_px)
+                        else:
+                            band_bottom = bottom
+                            band_top = max(top, bottom - band_px)
+                        if band_bottom - band_top > 2:
+                            canvas.create_rectangle(
+                                left + inset,
+                                band_top,
+                                right - inset,
+                                band_bottom,
+                                fill=band_color,
+                                outline="",
+                            )
+                    if has_logo:
+                        center_x_mm = frame_x + glass_width / 2
+                        if row == 1:
+                            center_y_mm = frame_y + band_height / 2
+                        else:
+                            center_y_mm = frame_y + glass_height - band_height / 2
+                        min_center = frame_y + indent_mm + logo_height_mm / 2
+                        max_center = frame_y + glass_height - indent_mm - logo_height_mm / 2
+                        if min_center > max_center:
+                            min_center = frame_y + logo_height_mm / 2
+                            max_center = frame_y + glass_height - logo_height_mm / 2
+                        center_y_mm = max(min(center_y_mm, max_center), min_center)
+                        logo_left = bed_left + (center_x_mm - logo_width_mm / 2) * scale
+                        logo_right = logo_left + logo_width_mm * scale
+
+                        logo_top = bed_bottom - (center_y_mm + logo_height_mm / 2) * scale
+                        logo_bottom = bed_bottom - (center_y_mm - logo_height_mm / 2) * scale
+                        if logo_right - logo_left > 2 and logo_bottom - logo_top > 2:
+                            canvas.create_rectangle(
+                                logo_left,
+                                logo_top,
+                                logo_right,
+                                logo_bottom,
+                                outline="#1f5137",
+                                width=1.4,
+                                fill="#ffffff",
+                            )
+
+                    arrow_center_x = (left + right) / 2
+                    arrow_center_y = (top + bottom) / 2
+                    arrow_height = min((bottom - top) * 0.45, 26)
+                    arrow_half = arrow_height / 2
+                    arrow_width = arrow_half * 0.75
+                    pointing_up = row == 1 or (row == 0 and not rotate_bottom)
+                    arrow_color = "#2b455d"
+                    if pointing_up:
+                        points = [
+                            arrow_center_x,
+                            arrow_center_y - arrow_half,
+                            arrow_center_x - arrow_width,
+                            arrow_center_y + arrow_half,
+                            arrow_center_x + arrow_width,
+                            arrow_center_y + arrow_half,
+                        ]
+                    else:
+                        points = [
+                            arrow_center_x,
+                            arrow_center_y + arrow_half,
+                            arrow_center_x - arrow_width,
+                            arrow_center_y - arrow_half,
+                            arrow_center_x + arrow_width,
+                            arrow_center_y - arrow_half,
+                        ]
+                    canvas.create_polygon(points, fill=arrow_color, outline="")
+
 
     def _draw_reference_preview(
         self,
@@ -1164,6 +1130,30 @@ class FrameSetupApp(ttk.Frame):
             draw_logo(top_center, "#1f5137")
             draw_logo(bottom_center, "#3b5e85")
 
+        usage_text = ""
+        if bed_width_mm > 0:
+            usage_ratio = total_clusters_width / bed_width_mm
+            usage_pct = usage_ratio * 100
+            prefix = "⚠️ " if usage_ratio > 1.001 else ""
+            usage_text = (
+                f"{prefix}Width usage: {total_clusters_width:.1f} / {bed_width_mm:.1f} mm"
+                f" ({usage_pct:.0f}%)"
+            )
+        else:
+            usage_text = f"Total width: {total_clusters_width:.1f} mm"
+        rotation_text = (
+            "Bottom row logos rotated 180°" if rotate_bottom else "Bottom row logos upright"
+        )
+        flip_text = "Mirrored in app" if flip_in_app else "Not mirrored in app"
+        band_text = f"Visible matte band: {visible_band:.1f} mm"
+        if has_logo:
+            logo_text = f"Logo: {logo_width_mm:.1f} × {logo_height_mm:.1f} mm"
+        else:
+            logo_text = "Logo: load EPS to preview placement"
+        self.preview_message_var.set(
+            f"{usage_text}\n{rotation_text} • {flip_text}\n{band_text} • {logo_text}"
+        )
+
     def _render_preview_message(self, canvas: tk.Canvas, width: int, height: int, message: str) -> None:
         canvas.create_text(
             width / 2,
@@ -1220,39 +1210,19 @@ class FrameSetupApp(ttk.Frame):
         matte_total = parse_positive_float(self.matte_total_var.get(), "Matte total height")
         cluster_gap = parse_non_negative_float(self.cluster_gap_var.get(), "Cluster gap")
         bed_width = parse_positive_float(self.bed_width_var.get(), "Bed width")
-        bed_height = parse_positive_float(self.bed_height_var.get(), "Bed height")
-        row_gap = parse_non_negative_float(self.row_gap_var.get(), "Row gap")
         outline_thickness = parse_positive_float(
             self.outline_thickness_var.get(), "Outline thickness"
         )
         cluster_count = self.cluster_var.get()
         if cluster_count < 1:
             raise ValidationError("Cluster count", "must be at least 1")
-        cluster_rows = self.cluster_rows_var.get()
-        if cluster_rows < 1:
-            raise ValidationError("Cluster rows", "must be at least 1")
-        horizontal_capacity = calculate_capacity_from_values(glass_width, bed_width, cluster_gap)
-        vertical_capacity = calculate_vertical_capacity(glass_height, bed_height, row_gap)
-        if horizontal_capacity < 1 or vertical_capacity < 1:
-            raise ValidationError("Cluster layout", "does not fit on the bed with current settings")
-        if cluster_count > horizontal_capacity:
+        capacity = calculate_capacity_from_values(glass_width, bed_width, cluster_gap)
+        if capacity < 1:
+            raise ValidationError("Cluster count", "does not fit on the bed with current settings")
+        if cluster_count > capacity:
             raise ValidationError(
                 "Cluster count",
-                f"cannot exceed {horizontal_capacity} across the bed width",
-            )
-        if cluster_rows > vertical_capacity:
-            raise ValidationError(
-                "Cluster rows",
-                f"cannot exceed {vertical_capacity} within the bed height",
-            )
-        max_frames = cluster_count * cluster_rows * 4
-        frame_quantity = self.frame_quantity_var.get()
-        if frame_quantity < 1:
-            raise ValidationError("Frame quantity", "must be at least 1")
-        if frame_quantity > max_frames:
-            raise ValidationError(
-                "Frame quantity",
-                f"cannot exceed {max_frames} for the selected clusters",
+                f"cannot exceed {capacity} for the current bed width",
             )
         color_name = self.color_var.get()
         color = PRESET_COLORS.get(color_name)
@@ -1272,35 +1242,21 @@ class FrameSetupApp(ttk.Frame):
             matte_total_height_mm=matte_total,
             cluster_gap_mm=cluster_gap,
             bed_width_in=bed_width,
-            bed_height_in=bed_height,
             outline_color=outline_color,
             outline_thickness_mm=outline_thickness,
             cluster_count=cluster_count,
-            cluster_rows=cluster_rows,
-            frame_quantity=frame_quantity,
             flip_in_app=self.flip_var.get(),
             allow_raster_fallback=self.raster_fallback_var.get(),
             rotate_bottom=self.rotate_bottom_var.get(),
-            row_gap_mm=row_gap,
             output_directory=output_directory,
             outline_filename=outline_filename,
             artwork_filename=artwork_filename,
         )
 
     def _generate_pdfs(self) -> None:
-        export_outlines = self.export_outlines_var.get()
-        export_artwork = self.export_artwork_var.get()
-        if not export_outlines and not export_artwork:
-            messagebox.showwarning(
-                "No outputs selected",
-                "Select at least one PDF to export.",
-            )
-            return
-        if export_artwork and self.logo_asset is None:
-            messagebox.showwarning(
-                "Missing logo",
-                "Please load an EPS logo before exporting artwork.",
-            )
+        if self.logo_asset is None:
+            messagebox.showwarning("Missing logo", "Please load an EPS logo before generating PDFs.")
+
             return
         try:
             params = self._validate_inputs()
@@ -1311,27 +1267,11 @@ class FrameSetupApp(ttk.Frame):
         self.set_progress(0)
         self._set_busy(True)
         try:
-            logo_asset = self.logo_asset or LogoAsset(
-                name="placeholder",
-                pdf_bytes=b"",
-                width_pt=0.0,
-                height_pt=0.0,
+            builder = PDFBuilder(params, self.logo_asset)
+            builder.generate_pdfs(self._progress_callback)
+            self.set_status(
+                f"Export complete: {params.outline_filename} and {params.artwork_filename}"
             )
-            builder = PDFBuilder(params, logo_asset)
-            result = builder.generate_pdfs(
-                self._progress_callback,
-                export_outlines=export_outlines,
-                export_artwork=export_artwork,
-            )
-            exports = []
-            if result.outline_path:
-                exports.append(os.path.basename(result.outline_path))
-            if result.artwork_path:
-                exports.append(os.path.basename(result.artwork_path))
-            if exports:
-                self.set_status("Export complete: " + " • ".join(exports))
-            else:
-                self.set_status("No files generated")
             self.set_progress(100)
         except Exception as exc:  # noqa: BLE001
             messagebox.showerror("Generation failed", str(exc))
@@ -1372,4 +1312,3 @@ def run_app() -> None:
 
 
 __all__ = ["FrameSetupApp", "run_app"]
-

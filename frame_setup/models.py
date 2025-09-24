@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-
-
 @dataclass
 class LogoAsset:
     """Represents an imported logo converted to PDF."""
@@ -30,13 +28,9 @@ class JobParameters:
     outline_color: tuple[float, float, float]
     outline_thickness_mm: float
     cluster_count: int
-    cluster_rows: int
-    frame_quantity: int
     flip_in_app: bool
     allow_raster_fallback: bool
     rotate_bottom: bool
-    row_gap_mm: float
-    bed_height_in: float
     output_directory: str
     outline_filename: str
     artwork_filename: str
@@ -48,12 +42,4 @@ class JobParameters:
     @property
     def artwork_path(self) -> str:
         return f"{self.output_directory}/{self.artwork_filename}"
-
-    @property
-    def frames_per_cluster(self) -> int:
-        return 4
-
-    @property
-    def max_frames(self) -> int:
-        return self.cluster_count * self.cluster_rows * self.frames_per_cluster
 
