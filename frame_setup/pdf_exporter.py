@@ -75,7 +75,7 @@ def _show_pdf_page_transformed(
     if flip_horizontal:
         center_x = target_rect.x0 + target_rect.width / 2.0
         flip_matrix = fitz.Matrix(-1, 0, 0, 1, 2 * center_x, 0)
-        matrix = flip_matrix * matrix
+        matrix = matrix * flip_matrix
 
     existing_objects = [item[1] for item in target_doc.get_page_xobjects(page.number)]
     existing_objects += [item[7] for item in target_doc.get_page_images(page.number)]
@@ -100,6 +100,8 @@ def _show_pdf_page_transformed(
     page_id = (source_id, pno)
     xref = target_doc.ShownPages.get(page_id, 0)
 
+    if overlay:
+        page.wrap_contents()
     xref = page._show_pdf_page(
         source_page,
         overlay=overlay,
