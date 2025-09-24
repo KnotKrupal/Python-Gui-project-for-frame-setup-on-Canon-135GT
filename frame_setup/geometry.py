@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+
 from typing import List
+
+from typing import Iterable, List
+
 
 import fitz
 
@@ -42,6 +46,7 @@ class Layout:
         return self.glass_height * 2
 
 
+
 @dataclass(frozen=True)
 class MatteGeometry:
     bottom_margin_mm: float
@@ -50,7 +55,6 @@ class MatteGeometry:
     opening_width_mm: float
     opening_height_mm: float
     visible_band_mm: float
-
 
 def calculate_cluster_capacity(params: JobParameters) -> int:
     cluster_width_mm = params.glass_width_mm * 2
