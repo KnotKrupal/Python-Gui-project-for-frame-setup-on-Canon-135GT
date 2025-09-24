@@ -46,7 +46,6 @@ class Layout:
         return self.glass_height * 2
 
 
-
 @dataclass(frozen=True)
 class MatteGeometry:
     bottom_margin_mm: float

@@ -8,10 +8,12 @@ A standalone Tkinter desktop utility that automates the outline and artwork layo
 ## Features
 
 - Responsive ttk user interface with SRG-branded splash screen, live status bar, and progress feedback.
+
 - Input controls for glass frame dimensions, frame indent, matte opening, bed width, cluster gap, outline color, thickness, and output directory.
 - Spinbox selector for cluster count with live capacity calculation based on bed width.
 - EPS logo loader that preserves vector data via Ghostscript and reports detected logo size in millimetres.
 - Options to flip artwork for reverse printing, rotate the bottom row 180°, and allow raster fallback when PyMuPDF cannot maintain vectors.
+
 - Outline and artwork exports share identical page dimensions and origin for guaranteed alignment on press.
 
 ## Requirements
@@ -37,6 +39,7 @@ python main.py
 2. Load the EPS logo file. The detected size is displayed in millimetres.
 3. Pick output directory and configure artwork options.
 4. Click **Generate PDFs** to create the aligned outline and artwork files.
+
 
 The generated PDFs are saved in the chosen directory using the job name slug with `ArizonaOutlines` and `ArizonaArtwork` suffixes.
 

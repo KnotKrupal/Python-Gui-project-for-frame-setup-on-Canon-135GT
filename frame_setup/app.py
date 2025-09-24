@@ -9,15 +9,14 @@ import fitz
 
 from .colors import DEFAULT_COLOR_NAME, PRESET_COLORS
 from .ghostscript import GhostscriptError, convert_eps_to_pdf_bytes
-
 from .geometry import (
     MatteGeometry,
     calculate_capacity_from_values,
     calculate_matte_geometry,
+
 )
 
 from .geometry import calculate_capacity_from_values
-
 from .models import JobParameters, LogoAsset
 from .pdf_exporter import PDFBuilder
 from .utils import (
@@ -85,7 +84,6 @@ class FrameSetupApp(ttk.Frame):
         self._bind_variable_updates()
         self.update_cluster_capacity()
         self.update_preview()
-
         self.set_status("Ready")
 
     def _create_style(self) -> None:
@@ -235,7 +233,6 @@ class FrameSetupApp(ttk.Frame):
         ).grid(row=row, column=0, columnspan=4, sticky="w")
 
         row += 1
-
         preview_container = ttk.Frame(frame)
         preview_container.grid(row=row, column=0, columnspan=4, sticky="nsew", pady=(4, 0))
         frame.rowconfigure(row, weight=1)
@@ -244,6 +241,7 @@ class FrameSetupApp(ttk.Frame):
 
         layout_preview = tk.Canvas(
             preview_container,
+        )
 
         preview = tk.Canvas(
             frame,
@@ -253,7 +251,6 @@ class FrameSetupApp(ttk.Frame):
             highlightthickness=1,
             highlightbackground="#c6c6c6",
         )
-
         layout_preview.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
 
         reference_preview = tk.Canvas(
@@ -283,7 +280,6 @@ class FrameSetupApp(ttk.Frame):
             textvariable=self.preview_message_var,
             font=("Segoe UI", 9, "italic"),
         ).grid(row=row, column=0, columnspan=4, sticky="w", pady=(4, 0))
-
 
     def _build_options(self, parent: ttk.Frame) -> None:
         frame = ttk.LabelFrame(parent, text="Options & Live Metrics")
@@ -397,7 +393,7 @@ class FrameSetupApp(ttk.Frame):
     def schedule_preview_update(self) -> None:
         if not self.preview_canvas or not self.reference_canvas:
 
-        self.schedule_preview_update()
+            self.schedule_preview_update()
 
     def schedule_preview_update(self) -> None:
         if getattr(self, "preview_canvas", None) is None:
@@ -412,15 +408,13 @@ class FrameSetupApp(ttk.Frame):
         layout_canvas = self.preview_canvas
         reference_canvas = self.reference_canvas
         if layout_canvas is None or reference_canvas is None:
-
-        canvas = getattr(self, "preview_canvas", None)
+            canvas = getattr(self, "preview_canvas", None)
         if canvas is None:
 
             return
         if self._preview_after_id is not None:
             self.after_cancel(self._preview_after_id)
             self._preview_after_id = None
-
 
         for target in (layout_canvas, reference_canvas):
             target.delete("all")
@@ -613,9 +607,9 @@ class FrameSetupApp(ttk.Frame):
         bed_right = bed_left + float(data["bed_width_mm"]) * scale
         bed_top = bed_bottom - float(data["cluster_height_mm"]) * scale
 
-            self._render_preview_message(canvas, width, height, "Enter numeric values")
-            self.preview_message_var.set("Preview unavailable: provide numeric values for dimensions.")
-            return
+        self._render_preview_message(canvas, width, height, "Enter numeric values")
+        self.preview_message_var.set("Preview unavailable: provide numeric values for dimensions.")
+            
         if glass_width <= 0 or glass_height <= 0 or bed_width_in <= 0:
             self._render_preview_message(
                 canvas,
@@ -653,7 +647,6 @@ class FrameSetupApp(ttk.Frame):
             bed_top,
             bed_right,
             bed_bottom,
-
             outline="#4c5c78",
             width=1.4,
         )
@@ -661,9 +654,9 @@ class FrameSetupApp(ttk.Frame):
         seam_y = bed_bottom - float(data["glass_height_mm"]) * scale
         arrangement_right = bed_left + float(data["total_clusters_width_mm"]) * scale
 
-            outline=bed_outline_color,
-            width=1.4,
-        )
+        outline=bed_outline_color
+        width=1.4
+        
         seam_y = bed_bottom - glass_height * scale
         arrangement_right = bed_left + total_clusters_width * scale
 
@@ -1170,7 +1163,6 @@ class FrameSetupApp(ttk.Frame):
             font=("Segoe UI", 11),
         )
 
-
     def _choose_output_directory(self) -> None:
         directory = filedialog.askdirectory(initialdir=self.output_dir_var.get() or os.getcwd())
         if directory:
@@ -1201,7 +1193,6 @@ class FrameSetupApp(ttk.Frame):
             self.selected_logo_var.set(f"Loaded: {os.path.basename(file_path)}")
             self.set_status("Logo loaded successfully")
             self.schedule_preview_update()
-
         except GhostscriptError as exc:
             messagebox.showerror("Ghostscript error", str(exc))
             self.set_status("Ghostscript conversion failed")
@@ -1265,6 +1256,7 @@ class FrameSetupApp(ttk.Frame):
     def _generate_pdfs(self) -> None:
         if self.logo_asset is None:
             messagebox.showwarning("Missing logo", "Please load an EPS logo before generating PDFs.")
+
             return
         try:
             params = self._validate_inputs()
@@ -1320,4 +1312,3 @@ def run_app() -> None:
 
 
 __all__ = ["FrameSetupApp", "run_app"]
-

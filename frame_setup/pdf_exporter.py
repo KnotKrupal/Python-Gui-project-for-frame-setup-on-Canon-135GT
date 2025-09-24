@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-
 from io import BytesIO
 from typing import Callable, List, Optional, Tuple
 
@@ -25,7 +24,6 @@ from .models import JobParameters, LogoAsset
 from .utils import mm_to_pt
 
 ProgressCallback = Optional[Callable[[int, str], None]]
-
 Matrix = Tuple[float, float, float, float, float, float]
 
 
@@ -197,7 +195,6 @@ class PDFBuilder:
     def __init__(self, params: JobParameters, logo: LogoAsset) -> None:
         self.params = params
         self.logo = logo
-
         self.layout: Layout = build_layout(params)
         self._matte: MatteGeometry = calculate_matte_geometry(
             params.glass_width_mm,
@@ -255,7 +252,6 @@ class PDFBuilder:
             doc.save(self.params.outline_path, deflate=True, garbage=4)
         finally:
             doc.close()
-
 
     def _compute_logo_placements(self) -> List[LogoPlacement]:
         visible_band_pt = mm_to_pt(
