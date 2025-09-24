@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+
+from typing import List
+
 from typing import Iterable, List
+
 
 import fitz
 
@@ -41,6 +45,16 @@ class Layout:
     def cluster_height(self) -> float:
         return self.glass_height * 2
 
+
+
+@dataclass(frozen=True)
+class MatteGeometry:
+    bottom_margin_mm: float
+    top_margin_mm: float
+    side_margin_mm: float
+    opening_width_mm: float
+    opening_height_mm: float
+    visible_band_mm: float
 
 def calculate_cluster_capacity(params: JobParameters) -> int:
     cluster_width_mm = params.glass_width_mm * 2
@@ -86,6 +100,37 @@ def build_layout(params: JobParameters) -> Layout:
         glass_height=glass_height,
         cluster_gap=cluster_gap,
         placements=placements,
+    )
+
+
+def calculate_matte_geometry(
+    glass_width_mm: float,
+    glass_height_mm: float,
+    indent_mm: float,
+    matte_total_mm: float,
+) -> MatteGeometry:
+    glass_width_mm = max(glass_width_mm, 0.0)
+    glass_height_mm = max(glass_height_mm, 0.0)
+    indent_mm = max(indent_mm, 0.0)
+    matte_total_mm = max(matte_total_mm, 0.0)
+
+    bottom_margin_mm = min(indent_mm, glass_height_mm / 2 if glass_height_mm else 0.0)
+    max_opening_height = max(glass_height_mm - bottom_margin_mm, 0.0)
+    opening_height_mm = min(matte_total_mm, max_opening_height)
+    top_margin_mm = max(glass_height_mm - bottom_margin_mm - opening_height_mm, 0.0)
+
+    side_margin_mm = min(indent_mm, glass_width_mm / 2 if glass_width_mm else 0.0)
+    opening_width_mm = max(glass_width_mm - 2 * side_margin_mm, 0.0)
+
+    visible_band_mm = max(matte_total_mm - bottom_margin_mm, 0.0)
+
+    return MatteGeometry(
+        bottom_margin_mm=bottom_margin_mm,
+        top_margin_mm=top_margin_mm,
+        side_margin_mm=side_margin_mm,
+        opening_width_mm=opening_width_mm,
+        opening_height_mm=opening_height_mm,
+        visible_band_mm=visible_band_mm,
     )
 
 

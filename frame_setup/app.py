@@ -9,7 +9,15 @@ import fitz
 
 from .colors import DEFAULT_COLOR_NAME, PRESET_COLORS
 from .ghostscript import GhostscriptError, convert_eps_to_pdf_bytes
+
+from .geometry import (
+    MatteGeometry,
+    calculate_capacity_from_values,
+    calculate_matte_geometry,
+)
+
 from .geometry import calculate_capacity_from_values
+
 from .models import JobParameters, LogoAsset
 from .pdf_exporter import PDFBuilder
 from .utils import (
@@ -116,6 +124,9 @@ class FrameSetupApp(ttk.Frame):
         self.progress_var = tk.DoubleVar(value=0.0)
         self._preview_after_id: Optional[str] = None
         self.preview_canvas: Optional[tk.Canvas] = None
+
+        self.reference_canvas: Optional[tk.Canvas] = None
+
         self.status_var = tk.StringVar()
         self.progress_var = tk.DoubleVar(value=0.0)
 
@@ -224,17 +235,47 @@ class FrameSetupApp(ttk.Frame):
         ).grid(row=row, column=0, columnspan=4, sticky="w")
 
         row += 1
+
+        preview_container = ttk.Frame(frame)
+        preview_container.grid(row=row, column=0, columnspan=4, sticky="nsew", pady=(4, 0))
+        frame.rowconfigure(row, weight=1)
+        preview_container.columnconfigure(0, weight=3)
+        preview_container.columnconfigure(1, weight=2)
+
+        layout_preview = tk.Canvas(
+            preview_container,
+
         preview = tk.Canvas(
             frame,
+
             height=240,
             background="#f9f9fb",
             highlightthickness=1,
             highlightbackground="#c6c6c6",
         )
+
+        layout_preview.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+
+        reference_preview = tk.Canvas(
+            preview_container,
+            height=240,
+            background="#ffffff",
+            highlightthickness=1,
+            highlightbackground="#d1d1d1",
+        )
+        reference_preview.grid(row=0, column=1, sticky="nsew")
+        preview_container.rowconfigure(0, weight=1)
+
+        layout_preview.bind("<Configure>", lambda event: self.schedule_preview_update())
+        reference_preview.bind("<Configure>", lambda event: self.schedule_preview_update())
+        self.preview_canvas = layout_preview
+        self.reference_canvas = reference_preview
+
         preview.grid(row=row, column=0, columnspan=4, sticky="nsew", pady=(4, 0))
         frame.rowconfigure(row, weight=1)
         preview.bind("<Configure>", lambda event: self.schedule_preview_update())
         self.preview_canvas = preview
+
 
         row += 1
         ttk.Label(
@@ -304,6 +345,7 @@ class FrameSetupApp(ttk.Frame):
         self.schedule_preview_update()
 
 
+
     def _on_cluster_spin(self) -> None:
         self.update_cluster_capacity()
 
@@ -334,6 +376,9 @@ class FrameSetupApp(ttk.Frame):
 
             self.schedule_preview_update()
 
+
+            self.schedule_preview_update()
+
             return
         self.cluster_spin.configure(to=capacity)
         current = self.cluster_var.get()
@@ -350,25 +395,70 @@ class FrameSetupApp(ttk.Frame):
         self.schedule_preview_update()
 
     def schedule_preview_update(self) -> None:
+        if not self.preview_canvas or not self.reference_canvas:
+
+        self.schedule_preview_update()
+
+    def schedule_preview_update(self) -> None:
         if getattr(self, "preview_canvas", None) is None:
+
             return
         if self._preview_after_id is not None:
             self.after_cancel(self._preview_after_id)
         self._preview_after_id = self.after(75, self.update_preview)
 
     def update_preview(self) -> None:
+
+        layout_canvas = self.preview_canvas
+        reference_canvas = self.reference_canvas
+        if layout_canvas is None or reference_canvas is None:
+
         canvas = getattr(self, "preview_canvas", None)
         if canvas is None:
+
             return
         if self._preview_after_id is not None:
             self.after_cancel(self._preview_after_id)
             self._preview_after_id = None
+
+
+        for target in (layout_canvas, reference_canvas):
+            target.delete("all")
+
+        layout_width = max(
+            int(layout_canvas.winfo_width()),
+            int(float(layout_canvas.cget("width"))),
+        )
+        layout_height = max(
+            int(layout_canvas.winfo_height()),
+            int(float(layout_canvas.cget("height"))),
+        )
+        reference_width = max(
+            int(reference_canvas.winfo_width()),
+            int(float(reference_canvas.cget("width"))),
+        )
+        reference_height = max(
+            int(reference_canvas.winfo_height()),
+            int(float(reference_canvas.cget("height"))),
+        )
+
+        if (
+            layout_width <= 2
+            or layout_height <= 2
+            or reference_width <= 2
+            or reference_height <= 2
+        ):
+            self._preview_after_id = self.after(120, self.update_preview)
+            return
+
+
         canvas.delete("all")
         width = max(int(canvas.winfo_width()), int(float(canvas.cget("width"))))
         height = max(int(canvas.winfo_height()), int(float(canvas.cget("height"))))
         if width <= 2 or height <= 2:
             self._preview_after_id = self.after(120, self.update_preview)
             return
+
         try:
             glass_width = float(self.glass_width_var.get())
             glass_height = float(self.glass_height_var.get())
@@ -377,6 +467,152 @@ class FrameSetupApp(ttk.Frame):
             cluster_gap = float(self.cluster_gap_var.get())
             bed_width_in = float(self.bed_width_var.get())
         except ValueError:
+
+            message = "Preview unavailable: provide numeric values for dimensions."
+            self._render_preview_message(
+                layout_canvas,
+                layout_width,
+                layout_height,
+                "Enter numeric values",
+            )
+            self._render_preview_message(
+                reference_canvas,
+                reference_width,
+                reference_height,
+                "Enter numeric values",
+            )
+            self.preview_message_var.set(message)
+            return
+
+        if glass_width <= 0 or glass_height <= 0 or bed_width_in <= 0:
+            message = "Preview unavailable: dimensions must be positive."
+            info_text = "Enter positive dimensions to view layout"
+            self._render_preview_message(layout_canvas, layout_width, layout_height, info_text)
+            self._render_preview_message(
+                reference_canvas,
+                reference_width,
+                reference_height,
+                info_text,
+            )
+            self.preview_message_var.set(message)
+            return
+
+        cluster_count = max(self.cluster_var.get(), 1)
+        cluster_height = glass_height * 2
+        if cluster_height <= 0:
+            message = "Preview unavailable: check glass height and matte values."
+            self._render_preview_message(
+                layout_canvas,
+                layout_width,
+                layout_height,
+                "Invalid height values",
+            )
+            self._render_preview_message(
+                reference_canvas,
+                reference_width,
+                reference_height,
+                "Invalid height values",
+            )
+            self.preview_message_var.set(message)
+            return
+
+        matte = calculate_matte_geometry(glass_width, glass_height, indent, matte_total)
+        bed_width_mm = bed_width_in * 25.4
+        cluster_width = glass_width * 2
+        gap = max(cluster_gap, 0.0)
+        total_clusters_width = cluster_count * cluster_width + max(cluster_count - 1, 0) * gap
+
+        logo_width_mm = logo_height_mm = 0.0
+        has_logo = False
+        if self.logo_asset is not None:
+            logo_width_mm = pt_to_mm(self.logo_asset.width_pt)
+            logo_height_mm = pt_to_mm(self.logo_asset.height_pt)
+            has_logo = logo_width_mm > 0 and logo_height_mm > 0
+
+        arrangement_data = {
+            "glass_width_mm": glass_width,
+            "glass_height_mm": glass_height,
+            "indent_mm": max(indent, 0.0),
+            "cluster_count": cluster_count,
+            "cluster_gap_mm": gap,
+            "bed_width_mm": bed_width_mm,
+            "total_clusters_width_mm": total_clusters_width,
+            "cluster_height_mm": cluster_height,
+            "logo_width_mm": logo_width_mm,
+            "logo_height_mm": logo_height_mm,
+            "has_logo": has_logo,
+            "rotate_bottom": self.rotate_bottom_var.get(),
+            "flip_in_app": self.flip_var.get(),
+            "visible_band_mm": matte.visible_band_mm,
+        }
+
+        self._draw_arrangement_preview(
+            layout_canvas,
+            layout_width,
+            layout_height,
+            arrangement_data,
+            matte,
+        )
+        self._draw_reference_preview(
+            reference_canvas,
+            reference_width,
+            reference_height,
+            arrangement_data,
+            matte,
+        )
+
+        if bed_width_mm > 0:
+            usage_ratio = total_clusters_width / bed_width_mm
+            usage_pct = usage_ratio * 100.0
+            prefix = "⚠️ " if usage_ratio > 1.001 else ""
+            usage_text = (
+                f"{prefix}Width usage: {total_clusters_width:.1f} / {bed_width_mm:.1f} mm"
+                f" ({usage_pct:.0f}%)"
+            )
+        else:
+            usage_text = f"Total width: {total_clusters_width:.1f} mm"
+
+        rotation_text = (
+            "Bottom row logos rotated 180°"
+            if arrangement_data["rotate_bottom"]
+            else "Bottom row logos upright"
+        )
+        flip_text = "Mirrored in app" if arrangement_data["flip_in_app"] else "Not mirrored in app"
+        matte_text = (
+            f"Matte opening: {matte.opening_width_mm:.1f} × {matte.opening_height_mm:.1f} mm"
+        )
+        borders_text = (
+            f"Borders top/bottom/side: {matte.top_margin_mm:.1f} / {matte.bottom_margin_mm:.1f} / {matte.side_margin_mm:.1f} mm"
+        )
+        if has_logo:
+            logo_text = f"Logo: {logo_width_mm:.1f} × {logo_height_mm:.1f} mm"
+        else:
+            logo_text = "Logo: load EPS to preview placement"
+        self.preview_message_var.set(
+            f"{usage_text}\n{matte_text}\n{borders_text}\n{rotation_text} • {flip_text}\n{logo_text}"
+        )
+
+    def _draw_arrangement_preview(
+        self,
+        canvas: tk.Canvas,
+        width: int,
+        height: int,
+        data: dict[str, float | bool],
+        matte: MatteGeometry,
+    ) -> None:
+        margin = 16
+        usable_width = max(width - margin * 2, 1)
+        usable_height = max(height - margin * 2, 1)
+        content_width = max(float(data["bed_width_mm"]), float(data["total_clusters_width_mm"]), 1.0)
+        scale_x = usable_width / content_width
+        scale_y = usable_height / float(data["cluster_height_mm"])
+        scale = min(scale_x, scale_y)
+
+        bed_left = margin
+        bed_bottom = height - margin
+        bed_right = bed_left + float(data["bed_width_mm"]) * scale
+        bed_top = bed_bottom - float(data["cluster_height_mm"]) * scale
+
             self._render_preview_message(canvas, width, height, "Enter numeric values")
             self.preview_message_var.set("Preview unavailable: provide numeric values for dimensions.")
             return
@@ -411,16 +647,26 @@ class FrameSetupApp(ttk.Frame):
         bed_right = bed_left + bed_width_mm * scale
         bed_top = bed_bottom - cluster_height * scale
         bed_outline_color = "#4c5c78"
+
         canvas.create_rectangle(
             bed_left,
             bed_top,
             bed_right,
             bed_bottom,
+
+            outline="#4c5c78",
+            width=1.4,
+        )
+
+        seam_y = bed_bottom - float(data["glass_height_mm"]) * scale
+        arrangement_right = bed_left + float(data["total_clusters_width_mm"]) * scale
+
             outline=bed_outline_color,
             width=1.4,
         )
         seam_y = bed_bottom - glass_height * scale
         arrangement_right = bed_left + total_clusters_width * scale
+
         canvas.create_line(
             bed_left,
             seam_y,
@@ -429,6 +675,28 @@ class FrameSetupApp(ttk.Frame):
             fill="#9fa8b8",
             dash=(4, 3),
         )
+
+
+        frame_fills = ["#fbe3d8", "#d8e5fb"]
+        matte_color = "#f2ddc6"
+        opening_outline = "#b9986a"
+        visible_band_mm = float(data["visible_band_mm"])
+        has_logo = bool(data["has_logo"])
+        indent_mm = float(data["indent_mm"])
+        logo_width_mm = float(data["logo_width_mm"])
+        logo_height_mm = float(data["logo_height_mm"])
+        rotate_bottom = bool(data["rotate_bottom"])
+
+        for cluster_index in range(int(data["cluster_count"])):
+            base_x = cluster_index * (float(data["glass_width_mm"]) * 2 + float(data["cluster_gap_mm"]))
+            for row in range(2):
+                for column in range(2):
+                    frame_x = base_x + column * float(data["glass_width_mm"])
+                    frame_y = row * float(data["glass_height_mm"])
+                    left = bed_left + frame_x * scale
+                    right = left + float(data["glass_width_mm"]) * scale
+                    top = bed_bottom - (frame_y + float(data["glass_height_mm"])) * scale
+
         frame_fills = ["#fbe3d8", "#d8e5fb"]
         band_color = "#c6efd0"
         visible_band = max(matte_total - indent, 0.0)
@@ -450,6 +718,7 @@ class FrameSetupApp(ttk.Frame):
                     left = bed_left + frame_x * scale
                     right = left + glass_width * scale
                     top = bed_bottom - (frame_y + glass_height) * scale
+
                     bottom = bed_bottom - frame_y * scale
                     canvas.create_rectangle(
                         left,
@@ -460,6 +729,104 @@ class FrameSetupApp(ttk.Frame):
                         outline="#7a879a",
                         width=1,
                     )
+
+
+                    opening_left_mm = frame_x + matte.side_margin_mm
+                    opening_right_mm = frame_x + float(data["glass_width_mm"]) - matte.side_margin_mm
+                    opening_bottom_mm = frame_y + matte.bottom_margin_mm
+                    opening_top_mm = opening_bottom_mm + matte.opening_height_mm
+
+                    opening_left = bed_left + opening_left_mm * scale
+                    opening_right = bed_left + opening_right_mm * scale
+                    opening_bottom = bed_bottom - opening_bottom_mm * scale
+                    opening_top = bed_bottom - opening_top_mm * scale
+
+                    if opening_left - left > 1:
+                        canvas.create_rectangle(
+                            left,
+                            top,
+                            opening_left,
+                            bottom,
+                            fill=matte_color,
+                            outline="",
+                        )
+                    if right - opening_right > 1:
+                        canvas.create_rectangle(
+                            opening_right,
+                            top,
+                            right,
+                            bottom,
+                            fill=matte_color,
+                            outline="",
+                        )
+                    if opening_top - top > 1:
+                        canvas.create_rectangle(
+                            opening_left,
+                            top,
+                            opening_right,
+                            opening_top,
+                            fill=matte_color,
+                            outline="",
+                        )
+                    if bottom - opening_bottom > 1:
+                        canvas.create_rectangle(
+                            opening_left,
+                            opening_bottom,
+                            opening_right,
+                            bottom,
+                            fill=matte_color,
+                            outline="",
+                        )
+                    if opening_right - opening_left > 2 and opening_bottom - opening_top > 2:
+                        canvas.create_rectangle(
+                            opening_left,
+                            opening_top,
+                            opening_right,
+                            opening_bottom,
+                            outline=opening_outline,
+                            width=1,
+                            fill="#ffffff",
+                        )
+
+                    if matte.bottom_margin_mm > 0:
+                        bottom_seam = bed_bottom - (frame_y + matte.bottom_margin_mm) * scale
+                        canvas.create_line(
+                            opening_left,
+                            bottom_seam,
+                            opening_right,
+                            bottom_seam,
+                            fill="#c6812f",
+                            dash=(4, 2),
+                        )
+                    if matte.top_margin_mm > 0:
+                        top_seam = bed_bottom - (
+                            frame_y + float(data["glass_height_mm"]) - matte.top_margin_mm
+                        ) * scale
+                        canvas.create_line(
+                            opening_left,
+                            top_seam,
+                            opening_right,
+                            top_seam,
+                            fill="#c6812f",
+                            dash=(4, 2),
+                        )
+
+                    if has_logo and visible_band_mm > 0 and logo_width_mm > 0 and logo_height_mm > 0:
+                        center_x_mm = frame_x + float(data["glass_width_mm"]) / 2
+                        if row == 1:
+                            center_y_mm = frame_y + visible_band_mm / 2
+                        else:
+                            center_y_mm = frame_y + float(data["glass_height_mm"]) - visible_band_mm / 2
+                        min_center = frame_y + indent_mm + logo_height_mm / 2
+                        max_center = frame_y + float(data["glass_height_mm"]) - indent_mm - logo_height_mm / 2
+                        if min_center > max_center:
+                            min_center = frame_y + logo_height_mm / 2
+                            max_center = frame_y + float(data["glass_height_mm"]) - logo_height_mm / 2
+                        center_y_mm = max(min(center_y_mm, max_center), min_center)
+
+                        logo_left = bed_left + (center_x_mm - logo_width_mm / 2) * scale
+                        logo_right = bed_left + (center_x_mm + logo_width_mm / 2) * scale
+
                     if band_height > 0:
                         band_px = band_height * scale
                         inset = max((right - left) * 0.08, 3)
@@ -492,6 +859,7 @@ class FrameSetupApp(ttk.Frame):
                         center_y_mm = max(min(center_y_mm, max_center), min_center)
                         logo_left = bed_left + (center_x_mm - logo_width_mm / 2) * scale
                         logo_right = logo_left + logo_width_mm * scale
+
                         logo_top = bed_bottom - (center_y_mm + logo_height_mm / 2) * scale
                         logo_bottom = bed_bottom - (center_y_mm - logo_height_mm / 2) * scale
                         if logo_right - logo_left > 2 and logo_bottom - logo_top > 2:
@@ -504,6 +872,7 @@ class FrameSetupApp(ttk.Frame):
                                 width=1.4,
                                 fill="#ffffff",
                             )
+
                     arrow_center_x = (left + right) / 2
                     arrow_center_y = (top + bottom) / 2
                     arrow_height = min((bottom - top) * 0.45, 26)
@@ -530,6 +899,244 @@ class FrameSetupApp(ttk.Frame):
                             arrow_center_y - arrow_half,
                         ]
                     canvas.create_polygon(points, fill=arrow_color, outline="")
+
+
+    def _draw_reference_preview(
+        self,
+        canvas: tk.Canvas,
+        width: int,
+        height: int,
+        data: dict[str, float | bool],
+        matte: MatteGeometry,
+    ) -> None:
+        margin_x = 28
+        margin_y = 34
+        available_width = max(width - margin_x * 2, 1)
+        available_height = max(height - margin_y * 2, 1)
+        scale = min(
+            available_width / float(data["glass_width_mm"]),
+            available_height / float(data["glass_height_mm"]),
+        )
+
+        frame_width = float(data["glass_width_mm"]) * scale
+        frame_height = float(data["glass_height_mm"]) * scale
+        left = (width - frame_width) / 2
+        top = (height - frame_height) / 2
+        right = left + frame_width
+        bottom = top + frame_height
+
+        canvas.create_text(
+            left,
+            top - 12,
+            text="1-Up Reference",
+            anchor="sw",
+            font=("Segoe UI", 11, "bold"),
+            fill="#303b4f",
+        )
+
+        canvas.create_rectangle(
+            left,
+            top,
+            right,
+            bottom,
+            outline="#41526d",
+            width=2,
+            fill="#f5f7fb",
+        )
+
+        def x_mm_to_px(value_mm: float) -> float:
+            return left + value_mm * scale
+
+        def y_mm_to_px(value_mm: float) -> float:
+            return bottom - value_mm * scale
+
+        opening_left = x_mm_to_px(matte.side_margin_mm)
+        opening_right = x_mm_to_px(float(data["glass_width_mm"]) - matte.side_margin_mm)
+        opening_bottom = y_mm_to_px(matte.bottom_margin_mm)
+        opening_top = y_mm_to_px(matte.bottom_margin_mm + matte.opening_height_mm)
+
+        matte_color = "#f2ddc6"
+        if opening_left - left > 1:
+            canvas.create_rectangle(left, top, opening_left, bottom, fill=matte_color, outline="")
+        if right - opening_right > 1:
+            canvas.create_rectangle(opening_right, top, right, bottom, fill=matte_color, outline="")
+        if opening_top - top > 1:
+            canvas.create_rectangle(opening_left, top, opening_right, opening_top, fill=matte_color, outline="")
+        if bottom - opening_bottom > 1:
+            canvas.create_rectangle(opening_left, opening_bottom, opening_right, bottom, fill=matte_color, outline="")
+        if opening_right - opening_left > 2 and opening_bottom - opening_top > 2:
+            canvas.create_rectangle(
+                opening_left,
+                opening_top,
+                opening_right,
+                opening_bottom,
+                outline="#b9986a",
+                width=1.5,
+                fill="#ffffff",
+            )
+
+        bottom_seam = y_mm_to_px(matte.bottom_margin_mm)
+        top_seam = y_mm_to_px(float(data["glass_height_mm"]) - matte.top_margin_mm)
+        canvas.create_line(
+            opening_left,
+            bottom_seam,
+            opening_right,
+            bottom_seam,
+            fill="#c6812f",
+            dash=(4, 2),
+        )
+        canvas.create_text(
+            opening_left,
+            min(bottom_seam + 12, height - 10),
+            text="Bottom seam",
+            anchor="w",
+            font=("Segoe UI", 8, "italic"),
+            fill="#c6812f",
+        )
+        canvas.create_line(
+            opening_left,
+            top_seam,
+            opening_right,
+            top_seam,
+            fill="#c6812f",
+            dash=(4, 2),
+        )
+        canvas.create_text(
+            opening_left,
+            max(top_seam - 12, top + 10),
+            text="Top seam",
+            anchor="w",
+            font=("Segoe UI", 8, "italic"),
+            fill="#c6812f",
+        )
+
+        width_line_y = min(bottom + 18, height - 18)
+        canvas.create_line(left, width_line_y, right, width_line_y, arrow=tk.BOTH, fill="#41526d")
+        canvas.create_text(
+            (left + right) / 2,
+            min(bottom + 32, height - 6),
+            text=f"Glass width {float(data['glass_width_mm']):.1f} mm",
+            font=("Segoe UI", 9),
+            fill="#41526d",
+        )
+        height_arrow_x = max(left - 18, 12)
+        canvas.create_line(height_arrow_x, top, height_arrow_x, bottom, arrow=tk.BOTH, fill="#41526d")
+        canvas.create_text(
+            max(left - 34, 16),
+            (top + bottom) / 2,
+            text=f"{float(data['glass_height_mm']):.1f} mm",
+            font=("Segoe UI", 9),
+            angle=90,
+            fill="#41526d",
+        )
+
+        right_arrow_x = min(right + 14, width - 18)
+        canvas.create_line(
+            right_arrow_x,
+            opening_top,
+            right_arrow_x,
+            opening_bottom,
+            arrow=tk.BOTH,
+            fill="#b17a2e",
+        )
+        canvas.create_text(
+            min(right + 32, width - 8),
+            (opening_top + opening_bottom) / 2,
+            text=f"Opening {matte.opening_height_mm:.1f} mm",
+            font=("Segoe UI", 8),
+            angle=90,
+            fill="#b17a2e",
+        )
+        side_arrow_y = max(top - 16, 12)
+        canvas.create_line(
+            opening_left,
+            side_arrow_y,
+            left,
+            side_arrow_y,
+            arrow=tk.BOTH,
+            fill="#b17a2e",
+        )
+        canvas.create_text(
+            (opening_left + left) / 2,
+            max(top - 28, 10),
+            text=f"Side border {matte.side_margin_mm:.1f} mm",
+            font=("Segoe UI", 8),
+            fill="#b17a2e",
+        )
+
+        canvas.create_text(
+            min(right, width - 8),
+            max(top - 12, 10),
+            text=("Flip in app" if data["flip_in_app"] else "No app flip"),
+            anchor="se",
+            font=("Segoe UI", 8),
+            fill="#41526d",
+        )
+
+        if data["has_logo"] and float(data["visible_band_mm"]) > 0:
+            logo_width_mm = float(data["logo_width_mm"])
+            logo_height_mm = float(data["logo_height_mm"])
+            indent_mm = float(data["indent_mm"])
+            visible_band_mm = float(data["visible_band_mm"])
+            glass_height_mm = float(data["glass_height_mm"])
+            glass_width_mm = float(data["glass_width_mm"])
+
+            def draw_logo(center_y_mm: float, outline: str) -> None:
+                min_center = indent_mm + logo_height_mm / 2
+                max_center = glass_height_mm - indent_mm - logo_height_mm / 2
+                if min_center > max_center:
+                    min_center = logo_height_mm / 2
+                    max_center = glass_height_mm - logo_height_mm / 2
+                center_y = max(min(center_y_mm, max_center), min_center)
+                left_px = x_mm_to_px(glass_width_mm / 2 - logo_width_mm / 2)
+                right_px = x_mm_to_px(glass_width_mm / 2 + logo_width_mm / 2)
+                top_px = y_mm_to_px(center_y + logo_height_mm / 2)
+                bottom_px = y_mm_to_px(center_y - logo_height_mm / 2)
+                if right_px - left_px > 2 and bottom_px - top_px > 2:
+                    canvas.create_rectangle(
+                        left_px,
+                        top_px,
+                        right_px,
+                        bottom_px,
+                        outline=outline,
+                        width=1.5,
+                        fill="#ffffff",
+                    )
+                    arrow_height = min((bottom_px - top_px) * 0.6, 28)
+                    arrow_half = arrow_height / 2
+                    arrow_width = arrow_half * 0.7
+                    center_x = (left_px + right_px) / 2
+                    pointing_up = outline == "#1f5137"
+                    if not pointing_up and data["rotate_bottom"]:
+                        pointing_up = False
+                    elif not pointing_up:
+                        pointing_up = True
+                    arrow_color = "#2b455d"
+                    if pointing_up:
+                        points = [
+                            center_x,
+                            (top_px + bottom_px) / 2 - arrow_half,
+                            center_x - arrow_width,
+                            (top_px + bottom_px) / 2 + arrow_half,
+                            center_x + arrow_width,
+                            (top_px + bottom_px) / 2 + arrow_half,
+                        ]
+                    else:
+                        points = [
+                            center_x,
+                            (top_px + bottom_px) / 2 + arrow_half,
+                            center_x - arrow_width,
+                            (top_px + bottom_px) / 2 - arrow_half,
+                            center_x + arrow_width,
+                            (top_px + bottom_px) / 2 - arrow_half,
+                        ]
+                    canvas.create_polygon(points, fill=arrow_color, outline="")
+
+            top_center = visible_band_mm / 2
+            bottom_center = glass_height_mm - visible_band_mm / 2
+            draw_logo(top_center, "#1f5137")
+            draw_logo(bottom_center, "#3b5e85")
+
         usage_text = ""
         if bed_width_mm > 0:
             usage_ratio = total_clusters_width / bed_width_mm
