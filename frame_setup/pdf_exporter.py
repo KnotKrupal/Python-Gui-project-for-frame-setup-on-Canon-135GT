@@ -12,6 +12,109 @@ from .utils import mm_to_pt
 ProgressCallback = Optional[Callable[[int, str], None]]
 
 
+def _show_pdf_page_transformed(
+    page: fitz.Page,
+    rect: fitz.Rect,
+    src: fitz.Document,
+    pno: int = 0,
+    *,
+    keep_proportion: bool = True,
+    overlay: bool = True,
+    oc: int = 0,
+    rotate: int = 0,
+    clip: Optional[fitz.Rect] = None,
+    flip_horizontal: bool = False,
+) -> int:
+    """Embed a PDF page with optional rotation and horizontal mirroring."""
+
+    def calc_matrix(
+        src_rect: fitz.Rect,
+        target_rect: fitz.Rect,
+        *,
+        keep: bool = True,
+        rotation: int = 0,
+    ) -> fitz.Matrix:
+        src_center = (src_rect.tl + src_rect.br) / 2.0
+        target_center = (target_rect.tl + target_rect.br) / 2.0
+        matrix = fitz.Matrix(1, 0, 0, 1, -src_center.x, -src_center.y)
+        matrix *= fitz.Matrix(rotation)
+        transformed_source = src_rect * matrix
+        scale_x = target_rect.width / transformed_source.width
+        scale_y = target_rect.height / transformed_source.height
+        if keep:
+            scale_x = scale_y = min(scale_x, scale_y)
+        matrix *= fitz.Matrix(scale_x, scale_y)
+        matrix *= fitz.Matrix(1, 0, 0, 1, target_center.x, target_center.y)
+        return matrix
+
+    fitz.CheckParent(page)
+    target_doc = page.parent
+    if not target_doc.is_pdf or not src.is_pdf:
+        raise ValueError("is no PDF")
+    if rect.is_empty or rect.is_infinite:
+        raise ValueError("rect must be finite and not empty")
+
+    while pno < 0:
+        pno += src.page_count
+    source_page = src[pno]
+    if source_page.get_contents() == []:
+        raise ValueError("nothing to show - source page empty")
+
+    target_rect = rect * ~page.transformation_matrix
+    source_rect = source_page.rect if not clip else source_page.rect & clip
+    if source_rect.is_empty or source_rect.is_infinite:
+        raise ValueError("clip must be finite and not empty")
+    source_rect = source_rect * ~source_page.transformation_matrix
+
+    matrix = calc_matrix(
+        source_rect,
+        target_rect,
+        keep=keep_proportion,
+        rotation=rotate,
+    )
+    if flip_horizontal:
+        center_x = target_rect.x0 + target_rect.width / 2.0
+        flip_matrix = fitz.Matrix(-1, 0, 0, 1, 2 * center_x, 0)
+        matrix = matrix * flip_matrix
+
+    existing_objects = [item[1] for item in target_doc.get_page_xobjects(page.number)]
+    existing_objects += [item[7] for item in target_doc.get_page_images(page.number)]
+    existing_objects += [item[4] for item in target_doc.get_page_fonts(page.number)]
+
+    base_name = "fzFrm"
+    suffix = 0
+    object_name = f"{base_name}{suffix}"
+    while object_name in existing_objects:
+        suffix += 1
+        object_name = f"{base_name}{suffix}"
+
+    source_id = src._graft_id
+    if target_doc._graft_id == source_id:
+        raise ValueError("source document must not equal target")
+
+    graft_map = target_doc.Graftmaps.get(source_id)
+    if graft_map is None:
+        graft_map = fitz.Graftmap(target_doc)
+        target_doc.Graftmaps[source_id] = graft_map
+
+    page_id = (source_id, pno)
+    xref = target_doc.ShownPages.get(page_id, 0)
+
+    if overlay:
+        page.wrap_contents()
+    xref = page._show_pdf_page(
+        source_page,
+        overlay=overlay,
+        matrix=fitz.JM_TUPLE(matrix),
+        xref=xref,
+        oc=oc,
+        clip=source_rect,
+        graftmap=graft_map,
+        _imgname=object_name,
+    )
+    target_doc.ShownPages[page_id] = xref
+    return xref
+
 @dataclass
 class ExportResult:
     outline_path: str
@@ -90,6 +193,8 @@ class PDFBuilder:
                         center_y + logo_height / 2,
                     )
                     rotate = self.params.rotate_bottom and placement.row == 0
+
+                    self._place_logo(page, logo_doc, logo_page, dest_rect, rotate)
                     self._place_logo(page, logo_page, dest_rect, rotate)
             finally:
                 logo_doc.close()
@@ -100,10 +205,48 @@ class PDFBuilder:
     def _place_logo(
         self,
         page: fitz.Page,
+
+        logo_doc: fitz.Document,
+
         logo_page: fitz.Page,
         dest_rect: fitz.Rect,
         rotate_bottom: bool,
     ) -> None:
+
+        rotate_degrees = 180 if rotate_bottom else 0
+        try:
+            _show_pdf_page_transformed(
+                page,
+                dest_rect,
+                logo_doc,
+                rotate=rotate_degrees,
+                flip_horizontal=self.params.flip_in_app,
+            )
+        except Exception:
+            if not self.params.allow_raster_fallback:
+                raise
+            scale = fitz.Matrix(600 / 72, 600 / 72)
+            transform = scale
+            if self.params.flip_in_app:
+                transform = fitz.Matrix(
+                    -1,
+                    0,
+                    0,
+                    1,
+                    logo_page.rect.width,
+                    0,
+                ) * transform
+            if rotate_degrees:
+                transform = fitz.Matrix(
+                    -1,
+                    0,
+                    0,
+                    -1,
+                    logo_page.rect.width,
+                    logo_page.rect.height,
+                ) * transform
+            pix = logo_page.get_pixmap(matrix=transform)
+
         matrix = fitz.Matrix(1, 0, 0, 1)
         if self.params.flip_in_app:
             matrix = fitz.Matrix(-1, 0, 0, 1) * matrix
