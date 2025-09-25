@@ -190,7 +190,6 @@ class ExportResult:
     artwork_path: str
 
 
-
 class PDFBuilder:
     def __init__(self, params: JobParameters, logo: LogoAsset) -> None:
         self.params = params
@@ -398,7 +397,6 @@ class PDFBuilder:
         dest_rect: fitz.Rect,
         rotate_bottom: bool,
     ) -> None:
-
         rotate_degrees = 180 if rotate_bottom else 0
         try:
             _show_pdf_page_transformed(

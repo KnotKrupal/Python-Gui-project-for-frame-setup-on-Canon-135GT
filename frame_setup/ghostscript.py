@@ -58,4 +58,3 @@ def convert_eps_to_pdf_bytes(eps_path: str) -> bytes:
             os.remove(output_path)
         except OSError:
             pass
-

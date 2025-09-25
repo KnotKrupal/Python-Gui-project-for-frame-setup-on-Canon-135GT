@@ -29,7 +29,6 @@ from .utils import (
     slugify,
 )
 
-
 SPLASH_DURATION_MS = 1800
 APP_TITLE = "Arizona 135 GT Frame Setup"
 AUTHOR_NAME = "Developed for SRG by ChatGPT"
@@ -452,7 +451,6 @@ class FrameSetupApp(ttk.Frame):
         if width <= 2 or height <= 2:
             self._preview_after_id = self.after(120, self.update_preview)
             return
-
         try:
             glass_width = float(self.glass_width_var.get())
             glass_height = float(self.glass_height_var.get())
@@ -1256,7 +1254,6 @@ class FrameSetupApp(ttk.Frame):
     def _generate_pdfs(self) -> None:
         if self.logo_asset is None:
             messagebox.showwarning("Missing logo", "Please load an EPS logo before generating PDFs.")
-
             return
         try:
             params = self._validate_inputs()

@@ -42,4 +42,3 @@ class JobParameters:
     @property
     def artwork_path(self) -> str:
         return f"{self.output_directory}/{self.artwork_filename}"
-
