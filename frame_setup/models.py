@@ -4,7 +4,6 @@ from dataclasses import dataclass
 @dataclass
 class LogoAsset:
     """Represents an imported logo converted to PDF."""
-
     name: str
     pdf_bytes: bytes
     width_pt: float
