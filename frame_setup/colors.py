@@ -19,3 +19,4 @@ PRESET_COLORS: Dict[str, OutlineColor] = {
 }
 
 DEFAULT_COLOR_NAME = "SRG Scarlet"
+

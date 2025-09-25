@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-
-
 @dataclass
 class LogoAsset:
-    """Represents an imported logo converted to PDF bytes."""
+    """Represents an imported logo converted to PDF."""
 
     name: str
     pdf_bytes: bytes
