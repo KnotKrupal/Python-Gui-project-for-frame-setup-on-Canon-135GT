@@ -7,11 +7,15 @@ import tempfile
 
 
 class GhostscriptError(RuntimeError):
-    """Raised when Ghostscript conversion fails."""
+    pass
 
 
 def find_ghostscript() -> str:
-    candidates = ["gs", "gswin64c", "gswin32c"]
+    candidates = [
+        "gs",
+        "gswin64c",
+        "gswin32c",
+    ]
     for candidate in candidates:
         path = shutil.which(candidate)
         if path:
@@ -45,10 +49,10 @@ def convert_eps_to_pdf_bytes(eps_path: str) -> bytes:
             check=False,
         )
         if result.returncode != 0:
-            error = result.stderr.decode("utf-8", errors="ignore") or "Ghostscript conversion failed"
-            raise GhostscriptError(error)
+            raise GhostscriptError(result.stderr.decode("utf-8", errors="ignore") or "Ghostscript conversion failed")
         with open(output_path, "rb") as pdf_file:
-            return pdf_file.read()
+            data = pdf_file.read()
+        return data
     finally:
         try:
             os.remove(output_path)
